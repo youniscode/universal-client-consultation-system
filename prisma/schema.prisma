@@ -1,0 +1,206 @@
+// prisma/schema.prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ClientType {
+  INDIVIDUAL
+  SMALL_BUSINESS
+  CORPORATION
+  NONPROFIT
+  STARTUP
+  ENTERPRISE
+}
+
+enum ProjectType {
+  WEBSITE
+  ECOMMERCE
+  WEB_APP
+  PORTFOLIO
+  BLOG
+  SAAS
+  API
+  CUSTOM
+}
+
+enum ComplexityLevel {
+  SIMPLE
+  MODERATE
+  COMPLEX
+  ENTERPRISE
+}
+
+enum BudgetRange {
+  UNDER_5K
+  RANGE_5K_TO_15K
+  RANGE_15K_TO_50K
+  OVER_50K
+}
+
+
+enum Timeline {
+  RUSH
+  STANDARD
+  EXTENDED
+  FLEXIBLE
+}
+
+enum QuestionType {
+  TEXT
+  TEXTAREA
+  MULTIPLE_CHOICE
+  CHECKBOX
+  DROPDOWN
+  SCALE
+  BOOLEAN
+}
+
+enum Phase {
+  DISCOVERY
+  AUDIENCE
+  FUNCTIONAL
+  TECH
+  DESIGN
+  CONTENT
+  STACK
+}
+
+enum ProjectStatus {
+  DRAFT
+  ACTIVE
+  ON_HOLD
+  COMPLETED
+  ARCHIVED
+}
+
+// ---- Auth-ready user (we'll wire NextAuth later) ----
+model User {
+  id        String   @id @default(cuid())
+  name      String?
+  email     String   @unique
+  image     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  clients   Client[]
+}
+
+
+// ---- Core domain ----
+model Client {
+  id        String     @id @default(cuid())
+  ownerId   String
+  owner     User       @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  name      String
+  clientType ClientType
+  industry  String?
+  contactName  String?
+  contactEmail String?
+  contactPhone String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  projects  Project[]
+  @@index([ownerId])
+}
+
+model Project {
+  id           String          @id @default(cuid())
+  clientId     String
+  client       Client          @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  name         String
+  projectType  ProjectType
+  status       ProjectStatus   @default(DRAFT)
+  complexity   ComplexityLevel @default(MODERATE)
+  budget       BudgetRange?
+  timeline     Timeline?
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  responses    Response[]
+  proposals    Proposal[]
+
+  @@index([clientId])
+}
+
+model Questionnaire {
+  id          String   @id @default(cuid())
+  name        String
+  version     Int      @default(1)
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  questions   Question[]
+}
+
+model Question {
+  id               String        @id @default(cuid())
+  questionnaireId  String
+  questionnaire    Questionnaire @relation(fields: [questionnaireId], references: [id], onDelete: Cascade)
+
+  phase            Phase
+  order            Int
+  questionText     String
+  type             QuestionType
+
+  // For choices & UI hints (labels, min/max for scale, etc.)
+  options          Json?
+
+  // Conditional logic (kept flexible to iterate fast):
+  // e.g. { "showIf": [{ "questionId": "q_projectType", "op": "equals", "value": "ECOMMERCE" }] }
+  showIf           Json?
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  responses        Response[]
+  @@index([questionnaireId])
+  @@index([phase, order])
+}
+
+model Response {
+  id         String   @id @default(cuid())
+  projectId  String
+  questionId String
+
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  // Store raw value(s) in JSON; the UI layer will validate/shape with Zod.
+  value      Json
+
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([projectId, questionId])
+  @@index([projectId])
+  @@index([questionId])
+}
+
+model Proposal {
+  id         String   @id @default(cuid())
+  projectId  String
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  version    Int      @default(1)
+  // We’ll render HTML server-side and keep a copy; PDF will be stored in object storage later.
+  html       String
+  pdfUrl     String?
+
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([projectId])
+  @@unique([projectId, version])
+}
