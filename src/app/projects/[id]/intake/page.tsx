@@ -1,11 +1,22 @@
+/**
+ * Project Intake (Questionnaire) Page
+ * ---------------------------------------------
+ * - Loads current project & active questionnaire
+ * - Groups questions by Phase
+ * - Renders TEXT / TEXTAREA / DROPDOWN / CHECKBOX
+ * - Adds a small "Other" text field whenever options include "Other"
+ * - Posts to `submitAnswers` server action; values are pre-filled on refresh
+ */
+
 import { prisma } from "@/lib/db";
 import { notFound } from "next/navigation";
 import { submitAnswers } from "@/actions/answers";
-import { QuestionType, Phase, Questionnaire, Question } from "@prisma/client";
+import { QuestionType, Phase, Question } from "@prisma/client";
 import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 
+// Extend type to say `options` can be unknown (JSON column)
 type Q = Question & { options: unknown | null };
 
 export default async function ProjectIntakePage({
@@ -13,12 +24,14 @@ export default async function ProjectIntakePage({
 }: {
   params: { id: string };
 }) {
+  // 1) Load the project + client
   const project = await prisma.project.findUnique({
     where: { id: params.id },
     include: { client: true },
   });
   if (!project) return notFound();
 
+  // 2) Load the active questionnaire + ordered questions
   const questionnaire = await prisma.questionnaire.findFirst({
     where: { isActive: true },
     include: {
@@ -27,6 +40,7 @@ export default async function ProjectIntakePage({
       },
     },
   });
+
   if (!questionnaire) {
     return (
       <main className="p-8 space-y-6">
@@ -39,18 +53,17 @@ export default async function ProjectIntakePage({
     );
   }
 
-  // Existing answers for this project
+  // 3) Fetch existing answers so we can pre-fill
   const answers = await prisma.answer.findMany({
     where: { projectId: project.id },
   });
   const answerMap = new Map(answers.map((a) => [a.questionId, a.value]));
 
-  // Group by phase
+  // 4) Group questions by Phase for rendering
   const groups = questionnaire.questions.reduce<Record<Phase, Q[]>>(
     (acc, q) => {
       const ph = q.phase as Phase;
-      acc[ph] ??= [];
-      (acc[ph] as Q[]).push(q as Q);
+      (acc[ph] ??= []).push(q as Q);
       return acc;
     },
     {
@@ -66,6 +79,7 @@ export default async function ProjectIntakePage({
 
   return (
     <main className="p-8 space-y-8">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">{project.name}</h1>
@@ -78,6 +92,7 @@ export default async function ProjectIntakePage({
         </Link>
       </div>
 
+      {/* The form posts to server action; the page revalidates on save */}
       <form
         action={async (fd) => {
           "use server";
@@ -100,7 +115,7 @@ export default async function ProjectIntakePage({
                   const name = `q_${q.id}`;
                   const saved = answerMap.get(q.id) ?? "";
 
-                  // Safe cast options from JSON to string[]
+                  // Cast Question.options -> string[] safely
                   const opts: string[] = Array.isArray((q as Q).options)
                     ? ((q as Q).options as unknown[]).map(String)
                     : [];
@@ -114,6 +129,7 @@ export default async function ProjectIntakePage({
                         {q.order}. {q.questionText}
                       </label>
 
+                      {/* TEXT */}
                       {q.type === QuestionType.TEXT && (
                         <input
                           id={q.id}
@@ -124,6 +140,7 @@ export default async function ProjectIntakePage({
                         />
                       )}
 
+                      {/* TEXTAREA */}
                       {q.type === QuestionType.TEXTAREA && (
                         <textarea
                           id={q.id}
@@ -134,22 +151,37 @@ export default async function ProjectIntakePage({
                         />
                       )}
 
+                      {/* DROPDOWN (+ optional 'Other' text) */}
                       {q.type === QuestionType.DROPDOWN && (
-                        <select
-                          id={q.id}
-                          name={name}
-                          className="w-full rounded-md border px-3 py-2"
-                          defaultValue={typeof saved === "string" ? saved : ""}
-                        >
-                          <option value="">— Select —</option>
-                          {opts.map((opt) => (
-                            <option key={opt} value={opt}>
-                              {opt}
-                            </option>
-                          ))}
-                        </select>
+                        <>
+                          <select
+                            id={q.id}
+                            name={name}
+                            className="w-full rounded-md border px-3 py-2"
+                            defaultValue={
+                              typeof saved === "string" ? saved : ""
+                            }
+                          >
+                            <option value="">— Select —</option>
+                            {opts.map((opt) => (
+                              <option key={opt} value={opt}>
+                                {opt}
+                              </option>
+                            ))}
+                          </select>
+
+                          {opts.includes("Other") && (
+                            <input
+                              name={`${name}__other`}
+                              className="mt-2 w-full rounded-md border px-3 py-2"
+                              placeholder='If "Other", specify here'
+                              defaultValue=""
+                            />
+                          )}
+                        </>
                       )}
 
+                      {/* CHECKBOX (+ optional 'Other' text) */}
                       {q.type === QuestionType.CHECKBOX && (
                         <div className="space-y-1">
                           {opts.map((opt) => {
@@ -173,6 +205,15 @@ export default async function ProjectIntakePage({
                               </label>
                             );
                           })}
+
+                          {opts.includes("Other") && (
+                            <input
+                              name={`${name}__other`}
+                              className="mt-2 w-full rounded-md border px-3 py-2"
+                              placeholder='If "Other", specify here'
+                              defaultValue=""
+                            />
+                          )}
                         </div>
                       )}
                     </div>
@@ -194,6 +235,7 @@ export default async function ProjectIntakePage({
   );
 }
 
+/** Render friendly section headings */
 function formatPhase(ph: Phase) {
   switch (ph) {
     case "DISCOVERY":
