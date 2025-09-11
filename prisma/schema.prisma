@@ -42,7 +42,6 @@ enum BudgetRange {
   OVER_50K
 }
 
-
 enum Timeline {
   RUSH
   STANDARD
@@ -87,19 +86,18 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  clients   Client[]
+  clients Client[]
 }
-
 
 // ---- Core domain ----
 model Client {
-  id        String     @id @default(cuid())
-  ownerId   String
-  owner     User       @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  id      String @id @default(cuid())
+  ownerId String
+  owner   User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
 
-  name      String
-  clientType ClientType
-  industry  String?
+  name         String
+  clientType   ClientType
+  industry     String?
   contactName  String?
   contactEmail String?
   contactPhone String?
@@ -107,27 +105,29 @@ model Client {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  projects  Project[]
+  projects Project[]
+
   @@index([ownerId])
 }
 
 model Project {
-  id           String          @id @default(cuid())
-  clientId     String
-  client       Client          @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  id       String @id @default(cuid())
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
-  name         String
-  projectType  ProjectType
-  status       ProjectStatus   @default(DRAFT)
-  complexity   ComplexityLevel @default(MODERATE)
-  budget       BudgetRange?
-  timeline     Timeline?
+  name        String
+  projectType ProjectType
+  status      ProjectStatus   @default(DRAFT)
+  complexity  ComplexityLevel @default(MODERATE)
+  budget      BudgetRange?
+  timeline    Timeline?
 
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  responses    Response[]
-  proposals    Proposal[]
+  responses Response[]
+  proposals Proposal[]
+  answers   Answer[] // ← back-relation added
 
   @@index([clientId])
 }
@@ -141,47 +141,49 @@ model Questionnaire {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  questions   Question[]
+  questions Question[]
 }
 
 model Question {
-  id               String        @id @default(cuid())
-  questionnaireId  String
-  questionnaire    Questionnaire @relation(fields: [questionnaireId], references: [id], onDelete: Cascade)
+  id              String        @id @default(cuid())
+  questionnaireId String
+  questionnaire   Questionnaire @relation(fields: [questionnaireId], references: [id], onDelete: Cascade)
 
-  phase            Phase
-  order            Int
-  questionText     String
-  type             QuestionType
+  phase        Phase
+  order        Int
+  questionText String
+  type         QuestionType
 
   // For choices & UI hints (labels, min/max for scale, etc.)
-  options          Json?
+  options Json?
 
   // Conditional logic (kept flexible to iterate fast):
   // e.g. { "showIf": [{ "questionId": "q_projectType", "op": "equals", "value": "ECOMMERCE" }] }
-  showIf           Json?
+  showIf Json?
 
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  responses        Response[]
+  responses Response[]
+  answers   Answer[] // ← back-relation added
+
   @@index([questionnaireId])
   @@index([phase, order])
 }
 
 model Response {
-  id         String   @id @default(cuid())
+  id         String @id @default(cuid())
   projectId  String
   questionId String
 
-  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  project  Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
 
   // Store raw value(s) in JSON; the UI layer will validate/shape with Zod.
-  value      Json
+  value Json
 
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([projectId, questionId])
   @@index([projectId])
@@ -189,18 +191,35 @@ model Response {
 }
 
 model Proposal {
-  id         String   @id @default(cuid())
-  projectId  String
-  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  id        String  @id @default(cuid())
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
-  version    Int      @default(1)
+  version Int     @default(1)
   // We’ll render HTML server-side and keep a copy; PDF will be stored in object storage later.
-  html       String
-  pdfUrl     String?
+  html    String
+  pdfUrl  String?
 
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  @@index([projectId])
   @@unique([projectId, version])
+  @@index([projectId])
+}
+
+model Answer {
+  id         String @id @default(cuid())
+  projectId  String
+  questionId String
+  value      String // JSON-encoded for multi-select
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project  Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, questionId])
+  @@index([projectId])
+  @@index([questionId])
 }

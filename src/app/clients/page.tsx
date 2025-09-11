@@ -1,8 +1,9 @@
 import { prisma } from "@/lib/db";
 import { ClientType } from "@prisma/client";
 import { createClient } from "@/actions/clients";
+import Link from "next/link";
 
-export const dynamic = "force-dynamic"; // always fetch fresh data
+export const dynamic = "force-dynamic"; // show fresh list after action
 
 export default async function ClientsPage() {
   const clients = await prisma.client.findMany({
@@ -120,12 +121,18 @@ export default async function ClientsPage() {
               <li className="opacity-70">No clients yet.</li>
             )}
             {clients.map((c) => (
-              <li key={c.id} className="rounded-md border px-4 py-2">
-                <div className="font-medium">{c.name}</div>
-                <div className="text-sm opacity-70">
-                  {c.clientType}
-                  {c.industry ? ` • ${c.industry}` : ""}
-                </div>
+              <li key={c.id} className="rounded-md border hover:bg-gray-50">
+                <Link
+                  href={`/clients/${c.id}`}
+                  className="block px-4 py-2"
+                  prefetch={false}
+                >
+                  <div className="font-medium">{c.name}</div>
+                  <div className="text-sm opacity-70">
+                    {c.clientType}
+                    {c.industry ? ` • ${c.industry}` : ""}
+                  </div>
+                </Link>
               </li>
             ))}
           </ul>
