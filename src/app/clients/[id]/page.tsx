@@ -1,16 +1,29 @@
 // src/app/clients/[id]/page.tsx
 import { notFound } from "next/navigation";
+import Link from "next/link";
 import { prisma } from "@/lib/db";
-import { createProject } from "@/actions/projects";
+import Progress from "@/components/ui/progress";
+import { createProject, markIntakeSubmitted } from "@/actions/projects";
 import {
   ProjectType,
   ComplexityLevel,
   BudgetRange,
   Timeline,
 } from "@prisma/client";
-import Link from "next/link";
 
 export const dynamic = "force-dynamic";
+
+function formatLastSaved(date: Date | null) {
+  if (!date) return "Never";
+  const diffMs = Date.now() - date.getTime();
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 1) return "Just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
 
 export default async function ClientDetailPage({
   params,
@@ -19,10 +32,48 @@ export default async function ClientDetailPage({
 }) {
   const client = await prisma.client.findUnique({
     where: { id: params.id },
-    include: { projects: { orderBy: { createdAt: "desc" } } },
+  });
+  if (!client) return notFound();
+
+  // Projects
+  const projects = await prisma.project.findMany({
+    where: { clientId: client.id },
+    orderBy: { createdAt: "desc" },
   });
 
-  if (!client) return notFound();
+  // Active questionnaire → total questions
+  const questionnaire = await prisma.questionnaire.findFirst({
+    where: { isActive: true },
+    include: { questions: true },
+  });
+  const totalQuestions = questionnaire?.questions.length ?? 0;
+
+  // Enrich with answers count, last saved, and % complete
+  const enriched = await Promise.all(
+    projects.map(async (p) => {
+      const [answerCount, lastAnswer] = await Promise.all([
+        prisma.answer.count({ where: { projectId: p.id } }),
+        prisma.answer.findFirst({
+          where: { projectId: p.id },
+          orderBy: { updatedAt: "desc" },
+          select: { updatedAt: true },
+        }),
+      ]);
+
+      const pct =
+        totalQuestions > 0
+          ? Math.round((answerCount / totalQuestions) * 100)
+          : 0;
+
+      return {
+        ...p,
+        answerCount,
+        totalQuestions,
+        pct,
+        lastSaved: lastAnswer?.updatedAt ?? null,
+      };
+    })
+  );
 
   return (
     <main className="p-8 space-y-10">
@@ -70,6 +121,7 @@ export default async function ClientDetailPage({
                 id="projectType"
                 name="projectType"
                 className="w-full rounded-md border px-3 py-2"
+                defaultValue={ProjectType.WEBSITE}
               >
                 {Object.values(ProjectType).map((opt) => (
                   <option key={opt} value={opt}>
@@ -150,29 +202,68 @@ export default async function ClientDetailPage({
           </form>
         </div>
 
-        {/* Projects list */}
-        <div className="rounded-2xl border p-6 space-y-3">
+        {/* Projects list with progress + actions */}
+        <div className="rounded-2xl border p-6 space-y-4">
           <h2 className="text-xl font-semibold">Projects</h2>
-          <ul className="space-y-2">
-            {client.projects.length === 0 && (
-              <li className="opacity-70">No projects yet.</li>
-            )}
-            {client.projects.map((p) => (
-              <li key={p.id} className="rounded-md border px-4 py-2">
-                <div className="font-medium">{p.name}</div>
-                <div className="text-sm opacity-70">
-                  {p.projectType}
-                  {p.complexity ? ` • ${p.complexity}` : ""}
-                  {p.budget ? ` • ${p.budget}` : ""}
-                  {p.timeline ? ` • ${p.timeline}` : ""}
-                </div>
-                <div className="mt-2">
-                  <Link href={`/projects/${p.id}/intake`} className="underline">
-                    Open questionnaire →
-                  </Link>
-                </div>
-              </li>
-            ))}
+
+          {enriched.length === 0 && (
+            <div className="opacity-70">No projects yet.</div>
+          )}
+
+          <ul className="space-y-3">
+            {enriched.map((p) => {
+              const label =
+                p.totalQuestions > 0
+                  ? `${p.answerCount}/${p.totalQuestions} answered`
+                  : "No questionnaire";
+              const isSubmitted = p.status === "ACTIVE";
+
+              return (
+                <li key={p.id} className="rounded-md border p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-1">
+                      <div className="font-medium">{p.name}</div>
+                      <div className="text-sm opacity-70">
+                        {p.projectType} • Last saved:{" "}
+                        {formatLastSaved(p.lastSaved)}
+                      </div>
+                    </div>
+                    {isSubmitted && (
+                      <span className="rounded-full border px-2 py-1 text-xs">
+                        Submitted
+                      </span>
+                    )}
+                  </div>
+
+                  <Progress value={p.pct} label={label} />
+
+                  <div className="flex gap-3">
+                    <Link
+                      href={`/projects/${p.id}/intake`}
+                      className="inline-flex items-center rounded-md border px-3 py-2 text-sm hover:bg-gray-50"
+                    >
+                      Resume questionnaire
+                    </Link>
+
+                    {!isSubmitted && (
+                      <form
+                        action={async () => {
+                          "use server";
+                          await markIntakeSubmitted(p.id, client.id);
+                        }}
+                      >
+                        <button
+                          type="submit"
+                          className="inline-flex items-center rounded-md border px-3 py-2 text-sm hover:bg-gray-50"
+                        >
+                          Mark as submitted
+                        </button>
+                      </form>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         </div>
       </section>

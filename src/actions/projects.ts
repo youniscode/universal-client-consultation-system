@@ -50,3 +50,16 @@ export async function createProject(formData: FormData): Promise<void> {
 
     revalidatePath(`/clients/${parsed.data.clientId}`);
 }
+
+// src/actions/projects.ts (append this)
+export async function markIntakeSubmitted(projectId: string, clientId: string) {
+    await prisma.project.update({
+        where: { id: projectId },
+        data: { status: "ACTIVE" }, // using ACTIVE to mean "submitted" for now
+    });
+
+    // Refresh the client page so the badge/progress update
+    revalidatePath(`/clients/${clientId}`);
+}
+
+

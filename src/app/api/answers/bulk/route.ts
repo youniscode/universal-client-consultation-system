@@ -2,78 +2,81 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 
-// Quick health check in the browser (GET /api/answers/bulk)
-export async function GET() {
-    return NextResponse.json({ ok: true, route: "/api/answers/bulk" });
-}
-
-/**
- * Accepts multipart/form-data
- *  - projectId: string
- *  - __allNames: string (space-separated input names present in the form)
- *  - q_<questionId>: value(s)
- */
 export async function POST(req: Request) {
     try {
-        const fd = await req.formData();
-        const projectId = String(fd.get("projectId") ?? "");
-        const rawNames = String(fd.get("__allNames") ?? "");
+        const formData = await req.formData();
+        const projectId = String(formData.get("projectId") ?? "").trim();
+
         if (!projectId) {
-            return NextResponse.json({ ok: false, error: "Missing projectId" }, { status: 400 });
+            return NextResponse.json({ error: "Missing projectId" }, { status: 400 });
         }
 
-        const names = rawNames
-            .split(/\s+/)
-            .map((s) => s.trim())
-            .filter(Boolean);
-
-        if (names.length === 0) {
-            return NextResponse.json({ ok: true, saved: 0 });
-        }
-
-        // Active questionnaire + its questions for validation
-        const questionnaire = await prisma.questionnaire.findFirst({
-            where: { isActive: true },
-            include: { questions: { select: { id: true } } },
+        // 🔒 Block writes if submitted (we're using ACTIVE to mean submitted)
+        const project = await prisma.project.findUnique({
+            where: { id: projectId },
+            select: { status: true },
         });
-
-        if (!questionnaire) {
-            return NextResponse.json({ ok: false, error: "No active questionnaire" }, { status: 500 });
+        if (!project) {
+            return NextResponse.json({ error: "Project not found" }, { status: 404 });
+        }
+        if (project.status === "ACTIVE") {
+            return NextResponse.json(
+                { error: "Project is submitted (read-only)" },
+                { status: 403 }
+            );
         }
 
-        const validIds = new Set(questionnaire.questions.map((q) => q.id));
+        let upserts = 0;
+        let deletes = 0;
 
-        let saved = 0;
-        for (const name of names) {
-            if (!name.startsWith("q_")) continue;
-            const questionId = name.slice(2);
+        // Iterate through form fields like q_<questionId>=<value>
+        for (const [key, raw] of formData.entries()) {
+            if (key === "projectId") continue;
+            if (!key.startsWith("q_")) continue;
 
-            // ignore any field that isn't in the active questionnaire
-            if (!validIds.has(questionId)) continue;
+            const questionId = key.slice(2); // after "q_"
+            if (!questionId) continue;
 
-            // read one or many values
-            const all = fd.getAll(name);
-            let value: string | null = null;
-            if (all.length === 0) {
-                value = null;
-            } else if (all.length === 1) {
-                value = String(all[0]);
-            } else {
-                value = JSON.stringify(all.map((v) => String(v)));
+            // We only expect string values from your inputs
+            if (typeof raw !== "string") continue;
+
+            const value = raw.trim();
+
+            // Ensure question exists (optional, but safer)
+            const exists = await prisma.question.findUnique({
+                where: { id: questionId },
+                select: { id: true },
+            });
+            if (!exists) continue;
+
+            if (value.length === 0) {
+                // Empty -> delete any existing answer
+                await prisma.answer.deleteMany({
+                    where: { projectId, questionId },
+                });
+                deletes++;
+                continue;
             }
 
+            // Upsert answer
             await prisma.answer.upsert({
-                where: { projectId_questionId: { projectId, questionId } },
-                create: { projectId, questionId, value: value ?? "" },
-                update: { value: value ?? "" },
+                where: {
+                    projectId_questionId: { projectId, questionId },
+                },
+                update: { value },
+                create: { projectId, questionId, value },
             });
-
-            saved++;
+            upserts++;
         }
 
-        return NextResponse.json({ ok: true, saved });
-    } catch (err) {
-        console.error("answers/bulk error", err);
-        return NextResponse.json({ ok: false, error: "Server error" }, { status: 500 });
+        return NextResponse.json({
+            ok: true,
+            route: "/api/answers/bulk",
+            upserts,
+            deletes,
+        });
+    } catch (e) {
+        console.error(e);
+        return NextResponse.json({ error: "Server error" }, { status: 500 });
     }
 }
