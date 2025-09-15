@@ -71,11 +71,13 @@ enum Phase {
 
 enum ProjectStatus {
   DRAFT
-  ACTIVE
+  SUBMITTED   // locked, awaiting proposal / internal review
+  ACTIVE      // in progress (post-scoping)
   ON_HOLD
   COMPLETED
   ARCHIVED
 }
+
 
 // ---- Auth-ready user (we'll wire NextAuth later) ----
 model User {

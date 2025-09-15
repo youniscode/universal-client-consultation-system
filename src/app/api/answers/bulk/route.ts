@@ -1,6 +1,7 @@
 // src/app/api/answers/bulk/route.ts
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { ProjectStatus } from "@prisma/client";
 
 export async function POST(req: Request) {
     try {
@@ -11,7 +12,7 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: "Missing projectId" }, { status: 400 });
         }
 
-        // 🔒 Block writes if submitted (we're using ACTIVE to mean submitted)
+        // Hard gate: block writes if submitted
         const project = await prisma.project.findUnique({
             where: { id: projectId },
             select: { status: true },
@@ -19,62 +20,44 @@ export async function POST(req: Request) {
         if (!project) {
             return NextResponse.json({ error: "Project not found" }, { status: 404 });
         }
-        if (project.status === "ACTIVE") {
+        if (project.status === ProjectStatus.SUBMITTED) {
             return NextResponse.json(
-                { error: "Project is submitted (read-only)" },
+                { error: "Project intake is submitted (read-only)" },
                 { status: 403 }
             );
         }
 
-        let upserts = 0;
-        let deletes = 0;
+        // Parse form entries: q_<questionId> = <value>
+        let upsertCount = 0;
 
-        // Iterate through form fields like q_<questionId>=<value>
-        for (const [key, raw] of formData.entries()) {
+        for (const [key, rawValue] of formData.entries()) {
             if (key === "projectId") continue;
             if (!key.startsWith("q_")) continue;
 
-            const questionId = key.slice(2); // after "q_"
+            const questionId = key.slice(2);
             if (!questionId) continue;
 
-            // We only expect string values from your inputs
-            if (typeof raw !== "string") continue;
+            // Normalize to string
+            if (typeof rawValue !== "string") continue;
+            const value = rawValue.trim();
 
-            const value = raw.trim();
-
-            // Ensure question exists (optional, but safer)
+            // (Optional) make sure the question exists
             const exists = await prisma.question.findUnique({
                 where: { id: questionId },
                 select: { id: true },
             });
             if (!exists) continue;
 
-            if (value.length === 0) {
-                // Empty -> delete any existing answer
-                await prisma.answer.deleteMany({
-                    where: { projectId, questionId },
-                });
-                deletes++;
-                continue;
-            }
-
-            // Upsert answer
             await prisma.answer.upsert({
-                where: {
-                    projectId_questionId: { projectId, questionId },
-                },
-                update: { value },
+                where: { projectId_questionId: { projectId, questionId } },
                 create: { projectId, questionId, value },
+                update: { value },
             });
-            upserts++;
+
+            upsertCount++;
         }
 
-        return NextResponse.json({
-            ok: true,
-            route: "/api/answers/bulk",
-            upserts,
-            deletes,
-        });
+        return NextResponse.json({ ok: true, upserts: upsertCount });
     } catch (e) {
         console.error(e);
         return NextResponse.json({ error: "Server error" }, { status: 500 });

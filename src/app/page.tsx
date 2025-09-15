@@ -1,38 +1,25 @@
-// app/page.tsx
-import type { Client, Project } from "@prisma/client";
-import { PrismaClient } from "@prisma/client";
-const prisma = new PrismaClient();
+// src/app/page.tsx
+import Link from "next/link";
 
-type ClientWithProjects = Client & { projects: Project[] };
-
-export default async function Home() {
-  const clients: ClientWithProjects[] = await prisma.client.findMany({
-    include: { projects: true },
-  });
-
+export default function HomePage() {
   return (
-    <main className="p-8 space-y-6">
-      <h1 className="text-3xl font-bold">UCCS — Universal Consultation</h1>
-      <p className="text-sm opacity-80">
-        Starter wired to Postgres via Prisma.
+    <main className="container max-w-5xl p-8">
+      <h1 className="text-3xl font-semibold">
+        Universal Client Consultation System
+      </h1>
+      <p className="mt-2 text-ink-600">
+        Welcome back. Jump to your clients to create a project and fill the
+        intake.
       </p>
 
-      <section className="space-y-2">
-        <h2 className="text-xl font-semibold">Seeded Clients & Projects</h2>
-        <ul className="list-disc pl-6">
-          {clients.map((c: ClientWithProjects) => (
-            <li key={c.id}>
-              <span className="font-medium">{c.name}</span>{" "}
-              <span className="opacity-70">({c.industry ?? "—"})</span>
-              <ul className="list-disc pl-6">
-                {c.projects.map((p: Project) => (
-                  <li key={p.id}>{p.name}</li>
-                ))}
-              </ul>
-            </li>
-          ))}
-        </ul>
-      </section>
+      <div className="mt-6">
+        <Link
+          href="/clients"
+          className="inline-flex items-center rounded-md border px-4 py-2 hover:bg-gray-50"
+        >
+          Open Clients →
+        </Link>
+      </div>
     </main>
   );
 }

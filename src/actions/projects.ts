@@ -1,32 +1,65 @@
 // src/actions/projects.ts
-'use server';
+"use server";
 
-import { z } from 'zod';
-import { prisma } from '@/lib/db';
-import { ProjectType, ComplexityLevel, BudgetRange, Timeline } from '@prisma/client';
-import { revalidatePath } from 'next/cache';
+import { z } from "zod";
+import { revalidatePath } from "next/cache";
+import { prisma } from "@/lib/db";
+import {
+    ProjectType,
+    ComplexityLevel,
+    BudgetRange,
+    Timeline,
+    ProjectStatus,
+    Prisma, // types
+} from "@prisma/client";
+
+/* ──────────────────────────────────────────────────────────
+   Schemas
+────────────────────────────────────────────────────────── */
 
 const createProjectSchema = z.object({
     clientId: z.string().min(1),
-    name: z.string().min(2, 'Project name is too short'),
+    name: z.string().min(2, "Project name is too short"),
     projectType: z.nativeEnum(ProjectType),
+
+    // optional, nullable enums
     complexity: z.nativeEnum(ComplexityLevel).optional(),
     budget: z.nativeEnum(BudgetRange).optional(),
     timeline: z.nativeEnum(Timeline).optional(),
 });
 
+const updateProjectSchema = z.object({
+    projectId: z.string().min(1),
+    clientId: z.string().min(1),
+
+    name: z.string().min(2).optional(),
+    projectType: z.nativeEnum(ProjectType).optional(),
+    complexity: z.nativeEnum(ComplexityLevel).optional(),
+    budget: z.nativeEnum(BudgetRange).optional(),
+    timeline: z.nativeEnum(Timeline).optional(),
+});
+
+const deleteProjectSchema = z.object({
+    projectId: z.string().min(1),
+    clientId: z.string().min(1),
+});
+
+/* ──────────────────────────────────────────────────────────
+   Create
+────────────────────────────────────────────────────────── */
+
 export async function createProject(formData: FormData): Promise<void> {
     const raw = {
-        clientId: String(formData.get('clientId') ?? ''),
-        name: String(formData.get('name') ?? ''),
-        projectType: String(formData.get('projectType') ?? 'WEBSITE') as ProjectType,
-        complexity: (formData.get('complexity') ? String(formData.get('complexity')) : undefined) as
+        clientId: String(formData.get("clientId") ?? ""),
+        name: String(formData.get("name") ?? ""),
+        projectType: String(formData.get("projectType") ?? ProjectType.WEBSITE) as ProjectType,
+        complexity: (formData.get("complexity") ? String(formData.get("complexity")) : undefined) as
             | ComplexityLevel
             | undefined,
-        budget: (formData.get('budget') ? String(formData.get('budget')) : undefined) as
+        budget: (formData.get("budget") ? String(formData.get("budget")) : undefined) as
             | BudgetRange
             | undefined,
-        timeline: (formData.get('timeline') ? String(formData.get('timeline')) : undefined) as
+        timeline: (formData.get("timeline") ? String(formData.get("timeline")) : undefined) as
             | Timeline
             | undefined,
     };
@@ -45,21 +78,131 @@ export async function createProject(formData: FormData): Promise<void> {
             complexity: parsed.data.complexity ?? undefined,
             budget: parsed.data.budget ?? undefined,
             timeline: parsed.data.timeline ?? undefined,
+            status: ProjectStatus.DRAFT, // new projects start as draft
         },
     });
 
     revalidatePath(`/clients/${parsed.data.clientId}`);
 }
 
-// src/actions/projects.ts (append this)
-export async function markIntakeSubmitted(projectId: string, clientId: string) {
+/* ──────────────────────────────────────────────────────────
+   Submit / Reopen (status gate)
+────────────────────────────────────────────────────────── */
+
+export async function markIntakeSubmitted(
+    projectId: string,
+    clientId: string,
+): Promise<void> {
     await prisma.project.update({
         where: { id: projectId },
-        data: { status: "ACTIVE" }, // using ACTIVE to mean "submitted" for now
+        data: { status: ProjectStatus.SUBMITTED },
     });
 
-    // Refresh the client page so the badge/progress update
     revalidatePath(`/clients/${clientId}`);
+    revalidatePath(`/projects/${projectId}/intake`);
 }
 
+export async function reopenIntake(
+    projectId: string,
+    clientId: string,
+): Promise<void> {
+    await prisma.project.update({
+        where: { id: projectId },
+        data: { status: ProjectStatus.DRAFT },
+    });
 
+    revalidatePath(`/clients/${clientId}`);
+    revalidatePath(`/projects/${projectId}/intake`);
+}
+
+/* ──────────────────────────────────────────────────────────
+   Update (name/type/enums)
+────────────────────────────────────────────────────────── */
+
+export async function updateProject(formData: FormData): Promise<void> {
+    const raw = {
+        projectId: String(formData.get("projectId") ?? ""),
+        clientId: String(formData.get("clientId") ?? ""),
+        name: (formData.get("name") ? String(formData.get("name")) : undefined) as string | undefined,
+        projectType: (formData.get("projectType")
+            ? (String(formData.get("projectType")) as ProjectType)
+            : undefined) as ProjectType | undefined,
+        complexity: (formData.get("complexity")
+            ? (String(formData.get("complexity")) as ComplexityLevel)
+            : undefined) as ComplexityLevel | undefined,
+        budget: (formData.get("budget")
+            ? (String(formData.get("budget")) as BudgetRange)
+            : undefined) as BudgetRange | undefined,
+        timeline: (formData.get("timeline")
+            ? (String(formData.get("timeline")) as Timeline)
+            : undefined) as Timeline | undefined,
+    };
+
+    const parsed = updateProjectSchema.safeParse(raw);
+    if (!parsed.success) {
+        console.error(parsed.error.flatten().fieldErrors);
+        return;
+    }
+
+    // Ensure the project exists (and optionally fetch status)
+    const proj = await prisma.project.findUnique({
+        where: { id: parsed.data.projectId },
+        select: { id: true, status: true },
+    });
+    if (!proj) return;
+
+    // Build payload with Prisma types — use { set: ... } for enum fields
+    const data: Prisma.ProjectUpdateInput = {};
+
+    if (parsed.data.name !== undefined) data.name = parsed.data.name;
+    if (parsed.data.projectType !== undefined)
+        data.projectType = { set: parsed.data.projectType };
+    if (parsed.data.complexity !== undefined)
+        data.complexity = { set: parsed.data.complexity };
+    if (parsed.data.budget !== undefined) data.budget = { set: parsed.data.budget };
+    if (parsed.data.timeline !== undefined) data.timeline = { set: parsed.data.timeline };
+
+    await prisma.project.update({
+        where: { id: parsed.data.projectId },
+        data,
+    });
+
+    revalidatePath(`/clients/${parsed.data.clientId}`);
+}
+
+/* ──────────────────────────────────────────────────────────
+   Delete (only when DRAFT)
+────────────────────────────────────────────────────────── */
+
+export async function deleteProject(formData: FormData): Promise<void> {
+    const raw = {
+        projectId: String(formData.get("projectId") ?? ""),
+        clientId: String(formData.get("clientId") ?? ""),
+    };
+
+    const parsed = deleteProjectSchema.safeParse(raw);
+    if (!parsed.success) {
+        console.error(parsed.error.flatten().fieldErrors);
+        return;
+    }
+
+    const proj = await prisma.project.findUnique({
+        where: { id: parsed.data.projectId },
+        select: { id: true, status: true },
+    });
+    if (!proj) return;
+
+    if (proj.status !== ProjectStatus.DRAFT) {
+        console.warn("Delete refused: project not in DRAFT.");
+        return;
+    }
+
+    // Remove answers/proposals then the project itself in a single transaction
+    await prisma.$transaction([
+        prisma.answer.deleteMany({ where: { projectId: parsed.data.projectId } }),
+        prisma.proposal.deleteMany({ where: { projectId: parsed.data.projectId } }),
+        prisma.project.delete({ where: { id: parsed.data.projectId } }),
+    ]);
+
+    revalidatePath(`/clients/${parsed.data.clientId}`);
+}
