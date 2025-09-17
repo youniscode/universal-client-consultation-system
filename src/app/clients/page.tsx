@@ -1,7 +1,9 @@
+// src/app/clients/page.tsx
 import Link from "next/link";
 import { prisma } from "@/lib/db";
-import { createClient } from "@/actions/clients"; // keep whatever you had before
-import { ClientType } from "@prisma/client";
+import { notFound } from "next/navigation";
+// if your action is named differently, keep your existing import
+import { createClient } from "@/actions/clients";
 
 export const dynamic = "force-dynamic";
 
@@ -10,135 +12,137 @@ export default async function ClientsPage() {
     orderBy: { createdAt: "desc" },
   });
 
+  if (!clients) return notFound();
+
   return (
-    <main className="p-8 space-y-8">
-      <div className="flex items-center justify-between">
+    <main className="p-8 space-y-10">
+      <header className="flex items-center justify-between">
         <h1 className="text-3xl font-bold">Clients</h1>
         <Link href="/" className="underline">
           ← Home
         </Link>
-      </div>
+      </header>
 
-      {/* New client */}
-      <section className="rounded-2xl border p-6">
-        <h2 className="text-xl font-semibold mb-4">New Client</h2>
+      <section className="grid gap-6 md:grid-cols-2">
+        {/* New Client */}
+        <div className="rounded-2xl border p-6 space-y-4">
+          <h2 className="text-xl font-semibold">New Client</h2>
 
-        <form action={createClient} className="space-y-6">
-          {/* Name */}
-          <div className="space-y-2">
-            <label htmlFor="name" className="block text-sm font-medium">
-              Client Name
-            </label>
-            <input
-              id="name"
-              name="name"
-              required
-              className="w-full rounded-md border px-3 py-2"
-              placeholder="Acme Retail"
-            />
-          </div>
-
-          {/* Client type */}
-          <div className="space-y-2">
-            <label htmlFor="clientType" className="block text-sm font-medium">
-              Client Type
-            </label>
-            <select
-              id="clientType"
-              name="clientType"
-              className="w-full rounded-md border px-3 py-2"
-              defaultValue={ClientType.SMALL_BUSINESS}
-            >
-              {Object.values(ClientType).map((ct) => (
-                <option key={ct} value={ct}>
-                  {ct}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Industry */}
-          <div className="space-y-2">
-            <label htmlFor="industry" className="block text-sm font-medium">
-              Industry
-            </label>
-            <input
-              id="industry"
-              name="industry"
-              className="w-full rounded-md border px-3 py-2"
-              placeholder="Retail"
-            />
-          </div>
-
-          {/* Contact info */}
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <form action={createClient} className="space-y-4" autoComplete="off">
             <div className="space-y-2">
-              <label
-                htmlFor="contactName"
-                className="block text-sm font-medium"
-              >
-                Contact Name
+              <label htmlFor="name" className="block text-sm font-medium">
+                Client Name
               </label>
               <input
-                id="contactName"
-                name="contactName"
+                id="name"
+                name="name"
+                required
+                placeholder="Acme Retail"
                 className="w-full rounded-md border px-3 py-2"
-                placeholder="Jane Doe"
               />
             </div>
 
             <div className="space-y-2">
-              <label
-                htmlFor="contactEmail"
-                className="block text-sm font-medium"
+              <label htmlFor="clientType" className="block text-sm font-medium">
+                Client Type
+              </label>
+              <select
+                id="clientType"
+                name="clientType"
+                className="w-full rounded-md border px-3 py-2"
+                defaultValue="SMALL_BUSINESS"
               >
-                Contact Email
+                {/* Keep these in sync with your enum values */}
+                <option value="SMALL_BUSINESS">SMALL_BUSINESS</option>
+                <option value="ENTERPRISE">ENTERPRISE</option>
+                <option value="CORPORATION">CORPORATION</option>
+                <option value="STARTUP">STARTUP</option>
+                <option value="NON_PROFIT">NON_PROFIT</option>
+              </select>
+            </div>
+
+            <div className="space-y-2">
+              <label htmlFor="industry" className="block text-sm font-medium">
+                Industry
               </label>
               <input
-                id="contactEmail"
-                name="contactEmail"
-                type="email"
+                id="industry"
+                name="industry"
+                placeholder="Retail"
                 className="w-full rounded-md border px-3 py-2"
-                placeholder="jane@company.com"
               />
             </div>
-          </div>
 
-          <button
-            type="submit"
-            className="inline-flex items-center rounded-md border px-4 py-2 font-medium hover:bg-gray-50"
-          >
-            Create Client
-          </button>
-        </form>
-      </section>
-
-      {/* Existing clients */}
-      <section className="rounded-2xl border p-6 space-y-3">
-        <h2 className="text-xl font-semibold">All Clients</h2>
-
-        <ul className="space-y-2">
-          {clients.map((c) => (
-            <li
-              key={c.id}
-              className="flex items-center justify-between rounded-md border px-4 py-3"
-            >
-              <div>
-                <div className="font-medium">{c.name}</div>
-                <div className="text-sm opacity-70">
-                  {c.clientType}
-                  {c.industry ? ` • ${c.industry}` : ""}
-                </div>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <label
+                  htmlFor="contactName"
+                  className="block text-sm font-medium"
+                >
+                  Contact Name
+                </label>
+                <input
+                  id="contactName"
+                  name="contactName"
+                  className="w-full rounded-md border px-3 py-2"
+                />
               </div>
-              <Link
-                href={`/clients/${c.id}`}
-                className="inline-flex items-center rounded-md border px-3 py-2 text-sm hover:bg-gray-50"
+
+              <div className="space-y-2">
+                <label
+                  htmlFor="contactEmail"
+                  className="block text-sm font-medium"
+                >
+                  Contact Email
+                </label>
+                <input
+                  id="contactEmail"
+                  name="contactEmail"
+                  type="email"
+                  className="w-full rounded-md border px-3 py-2"
+                />
+              </div>
+            </div>
+
+            {/* Plain, styled submit to avoid the blank pill */}
+            <button
+              type="submit"
+              className="inline-flex items-center rounded-md border px-3 py-2 text-sm hover:bg-gray-50"
+            >
+              Create client
+            </button>
+          </form>
+        </div>
+
+        {/* All Clients */}
+        <div className="rounded-2xl border p-6 space-y-4">
+          <h2 className="text-xl font-semibold">All Clients</h2>
+
+          <ul className="space-y-3">
+            {clients.map((c) => (
+              <li
+                key={c.id}
+                className="flex items-center justify-between rounded-md border p-4 hover:shadow-sm transition"
               >
-                Open →
-              </Link>
-            </li>
-          ))}
-        </ul>
+                <div className="space-y-1">
+                  <div className="font-medium">{c.name}</div>
+                  <div className="text-sm opacity-70">
+                    {c.clientType}
+                    {c.industry ? ` • ${c.industry}` : ""}
+                  </div>
+                </div>
+
+                <Link
+                  href={`/clients/${c.id}`}
+                  prefetch
+                  className="inline-flex items-center rounded-md border px-3 py-2 text-sm hover:bg-gray-50"
+                >
+                  Open →
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
       </section>
     </main>
   );
