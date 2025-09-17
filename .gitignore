@@ -12,3 +12,7 @@ out
 
 # Prisma
 prisma/dev.db
+
+.next/
+.turbo/
+node_modules/

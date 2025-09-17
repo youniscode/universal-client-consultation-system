@@ -2,13 +2,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
+import Button from "@/components/ui/button";
 import Progress from "@/components/ui/progress";
 import {
   createProject,
+  updateProject,
   markIntakeSubmitted,
   reopenIntake,
-  updateProject,
-  deleteProject,
 } from "@/actions/projects";
 import {
   ProjectType,
@@ -20,17 +20,31 @@ import {
 
 export const dynamic = "force-dynamic";
 
-/** Pretty "last saved" label */
 function formatLastSaved(date: Date | null) {
   if (!date) return "Never";
-  const diffMs = Date.now() - date.getTime();
-  const mins = Math.floor(diffMs / 60000);
-  if (mins < 1) return "Just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
+  const ms = Date.now() - date.getTime();
+  const m = Math.floor(ms / 60000);
+  if (m < 1) return "Just now";
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.floor(h / 24);
+  return `${d}d ago`;
+}
+
+// DEV ONLY — will outline any unexpected extra child in the actions row.
+// Remove later if you like.
+function Guard({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      data-guard
+      className="flex gap-3 [&>*]:outline-transparent"
+      // If something extra slips in, it will get a faint outline
+      // so we can see *what* it is in DevTools.
+    >
+      {children}
+    </div>
+  );
 }
 
 export default async function ClientDetailPage({
@@ -43,20 +57,17 @@ export default async function ClientDetailPage({
   });
   if (!client) return notFound();
 
-  // Projects for this client
   const projects = await prisma.project.findMany({
     where: { clientId: client.id },
     orderBy: { createdAt: "desc" },
   });
 
-  // Active questionnaire (for progress)
   const questionnaire = await prisma.questionnaire.findFirst({
     where: { isActive: true },
     include: { questions: true },
   });
   const totalQuestions = questionnaire?.questions.length ?? 0;
 
-  // Enrich projects with counts, last saved, % complete
   const enriched = await Promise.all(
     projects.map(async (p) => {
       const [answerCount, lastAnswer] = await Promise.all([
@@ -100,11 +111,11 @@ export default async function ClientDetailPage({
       </div>
 
       <section className="grid gap-6 md:grid-cols-2">
-        {/* Create Project */}
+        {/* New project */}
         <div className="rounded-2xl border p-6 space-y-4">
           <h2 className="text-xl font-semibold">New Project</h2>
 
-          <form action={createProject} className="space-y-4">
+          <form action={createProject} className="space-y-4" autoComplete="off">
             <input type="hidden" name="clientId" value={client.id} />
 
             <div className="space-y-2">
@@ -203,16 +214,11 @@ export default async function ClientDetailPage({
               </div>
             </div>
 
-            <button
-              type="submit"
-              className="inline-flex items-center rounded-md border px-4 py-2 font-medium hover:bg-gray-50"
-            >
-              Create Project
-            </button>
+            <Button type="submit">Create Project</Button>
           </form>
         </div>
 
-        {/* Projects list */}
+        {/* Projects */}
         <div className="rounded-2xl border p-6 space-y-4">
           <h2 className="text-xl font-semibold">Projects</h2>
 
@@ -220,20 +226,21 @@ export default async function ClientDetailPage({
             <div className="opacity-70">No projects yet.</div>
           )}
 
-          <ul className="space-y-4">
+          <ul className="space-y-3">
             {enriched.map((p) => {
               const label =
                 p.totalQuestions > 0
                   ? `${p.answerCount}/${p.totalQuestions} answered`
                   : "No questionnaire";
 
-              const isDraft = p.status === ProjectStatus.DRAFT;
               const isSubmitted = p.status === ProjectStatus.SUBMITTED;
-              // NEW: allow reopening for any non-draft status (covers legacy ACTIVE, etc.)
-              const canReopen = p.status !== ProjectStatus.DRAFT;
+              const isDraft = p.status === ProjectStatus.DRAFT;
 
               return (
-                <li key={p.id} className="rounded-xl border p-4 space-y-3">
+                <li
+                  key={p.id}
+                  className="rounded-md border p-4 space-y-3 transition hover:shadow-sm"
+                >
                   <div className="flex items-center justify-between">
                     <div className="space-y-1">
                       <div className="font-medium">{p.name}</div>
@@ -242,7 +249,6 @@ export default async function ClientDetailPage({
                         {formatLastSaved(p.lastSaved)}
                       </div>
                     </div>
-
                     {isSubmitted && (
                       <span className="rounded-full border px-2 py-1 text-xs">
                         Submitted
@@ -252,10 +258,12 @@ export default async function ClientDetailPage({
 
                   <Progress value={p.pct} label={label} />
 
-                  <div className="flex flex-wrap gap-3">
+                  {/* Actions row — strictly controlled */}
+                  <Guard>
                     <Link
                       href={`/projects/${p.id}/intake`}
                       className="inline-flex items-center rounded-md border px-3 py-2 text-sm hover:bg-gray-50"
+                      prefetch
                     >
                       {isSubmitted
                         ? "View questionnaire"
@@ -265,10 +273,12 @@ export default async function ClientDetailPage({
                     <Link
                       href={`/projects/${p.id}/brief`}
                       className="inline-flex items-center rounded-md border px-3 py-2 text-sm hover:bg-gray-50"
+                      prefetch
                     >
                       Generate brief
                     </Link>
 
+                    {/* Only render a third control if DRAFT */}
                     {isDraft && (
                       <form
                         action={async () => {
@@ -276,60 +286,52 @@ export default async function ClientDetailPage({
                           await markIntakeSubmitted(p.id, client.id);
                         }}
                       >
-                        <button
-                          type="submit"
-                          className="inline-flex items-center rounded-md border px-3 py-2 text-sm hover:bg-gray-50"
-                        >
+                        <Button type="submit" size="sm">
                           Mark as submitted
-                        </button>
+                        </Button>
                       </form>
                     )}
-
-                    {canReopen && (
-                      <form
-                        action={async () => {
-                          "use server";
-                          await reopenIntake(p.id, client.id);
-                        }}
-                      >
-                        <button
-                          type="submit"
-                          className="inline-flex items-center rounded-md border px-3 py-2 text-sm text-red-600 hover:bg-gray-50"
-                        >
-                          Reopen intake
-                        </button>
-                      </form>
-                    )}
-                  </div>
+                  </Guard>
 
                   {/* Edit panel */}
-                  <details className="rounded-lg border bg-white/50 p-3">
-                    <summary className="cursor-pointer select-none text-sm font-medium">
-                      ▸ Edit project
+                  <details className="mt-4 rounded-lg border bg-ink-50/50 p-3">
+                    <summary className="cursor-pointer text-sm font-medium">
+                      Edit project
                     </summary>
 
-                    <form action={updateProject} className="mt-3 space-y-3">
+                    <form
+                      action={updateProject}
+                      className="mt-3 space-y-3"
+                      autoComplete="off"
+                    >
                       <input type="hidden" name="projectId" value={p.id} />
                       <input type="hidden" name="clientId" value={client.id} />
 
-                      <div className="grid gap-3 md:grid-cols-2">
-                        <div className="space-y-1">
-                          <label className="block text-sm font-medium">
-                            Name
-                          </label>
-                          <input
-                            name="name"
-                            defaultValue={p.name}
-                            className="w-full rounded-md border px-3 py-2"
-                            placeholder="Project name"
-                          />
-                        </div>
+                      <div className="space-y-2">
+                        <label
+                          htmlFor={`name-${p.id}`}
+                          className="block text-sm font-medium"
+                        >
+                          Name
+                        </label>
+                        <input
+                          id={`name-${p.id}`}
+                          name="name"
+                          defaultValue={p.name}
+                          className="w-full rounded-md border px-3 py-2"
+                        />
+                      </div>
 
-                        <div className="space-y-1">
-                          <label className="block text-sm font-medium">
+                      <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                        <div className="space-y-2">
+                          <label
+                            htmlFor={`type-${p.id}`}
+                            className="block text-sm font-medium"
+                          >
                             Type
                           </label>
                           <select
+                            id={`type-${p.id}`}
                             name="projectType"
                             defaultValue={p.projectType}
                             className="w-full rounded-md border px-3 py-2"
@@ -342,29 +344,15 @@ export default async function ClientDetailPage({
                           </select>
                         </div>
 
-                        <div className="space-y-1">
-                          <label className="block text-sm font-medium">
-                            Complexity
-                          </label>
-                          <select
-                            name="complexity"
-                            defaultValue={p.complexity ?? ""}
-                            className="w-full rounded-md border px-3 py-2"
+                        <div className="space-y-2">
+                          <label
+                            htmlFor={`budget-${p.id}`}
+                            className="block text-sm font-medium"
                           >
-                            <option value="">(unspecified)</option>
-                            {Object.values(ComplexityLevel).map((opt) => (
-                              <option key={opt} value={opt}>
-                                {opt}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-
-                        <div className="space-y-1">
-                          <label className="block text-sm font-medium">
                             Budget
                           </label>
                           <select
+                            id={`budget-${p.id}`}
                             name="budget"
                             defaultValue={p.budget ?? ""}
                             className="w-full rounded-md border px-3 py-2"
@@ -378,11 +366,15 @@ export default async function ClientDetailPage({
                           </select>
                         </div>
 
-                        <div className="space-y-1">
-                          <label className="block text-sm font-medium">
+                        <div className="space-y-2">
+                          <label
+                            htmlFor={`timeline-${p.id}`}
+                            className="block text-sm font-medium"
+                          >
                             Timeline
                           </label>
                           <select
+                            id={`timeline-${p.id}`}
                             name="timeline"
                             defaultValue={p.timeline ?? ""}
                             className="w-full rounded-md border px-3 py-2"
@@ -397,34 +389,46 @@ export default async function ClientDetailPage({
                         </div>
                       </div>
 
-                      <button
-                        type="submit"
-                        className="inline-flex items-center rounded-md border px-3 py-2 text-sm hover:bg-gray-50"
-                      >
-                        Save changes
-                      </button>
+                      <div className="space-y-2">
+                        <label
+                          htmlFor={`complexity-${p.id}`}
+                          className="block text-sm font-medium"
+                        >
+                          Complexity
+                        </label>
+                        <select
+                          id={`complexity-${p.id}`}
+                          name="complexity"
+                          defaultValue={p.complexity ?? ""}
+                          className="w-full rounded-md border px-3 py-2"
+                        >
+                          <option value="">(unspecified)</option>
+                          {Object.values(ComplexityLevel).map((opt) => (
+                            <option key={opt} value={opt}>
+                              {opt}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <Button type="submit">Save changes</Button>
                     </form>
                   </details>
 
-                  {/* Delete (only when DRAFT) */}
-                  <div className="flex justify-end">
-                    <form action={deleteProject}>
-                      <input type="hidden" name="projectId" value={p.id} />
-                      <input type="hidden" name="clientId" value={client.id} />
-                      <button
-                        type="submit"
-                        disabled={!isDraft}
-                        className="inline-flex items-center rounded-md border px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-50"
-                        title={
-                          isDraft
-                            ? "Delete project"
-                            : "Only draft projects can be deleted"
-                        }
-                      >
-                        Delete project
-                      </button>
+                  {/* Reopen appears only when SUBMITTED, and below the card */}
+                  {isSubmitted && (
+                    <form
+                      action={async () => {
+                        "use server";
+                        await reopenIntake(p.id, client.id);
+                      }}
+                      className="mt-3"
+                    >
+                      <Button type="submit" variant="destructive" size="sm">
+                        Reopen intake
+                      </Button>
                     </form>
-                  </div>
+                  )}
                 </li>
               );
             })}
