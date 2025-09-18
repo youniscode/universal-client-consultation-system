@@ -2,15 +2,19 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
+
 import Button from "@/components/ui/button";
 import Progress from "@/components/ui/progress";
 import Card from "@/components/ui/card";
+import DeleteProject from "@/components/ui/DeleteProject";
+
 import {
   createProject,
   updateProject,
   markIntakeSubmitted,
   reopenIntake,
 } from "@/actions/projects";
+
 import {
   ProjectType,
   ComplexityLevel,
@@ -35,16 +39,16 @@ function formatLastSaved(date: Date | null) {
 export default async function ClientDetailPage({
   params,
 }: {
-  // Next 15+: params is a Promise in RSC
+  // Next 15 App Router: params is a Promise in RSCs
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
 
-  // 1) Fetch client (and 404 if missing)
+  // 1) Client
   const client = await prisma.client.findUnique({ where: { id } });
   if (!client) return notFound();
 
-  // 2) Fetch projects for this client (this was missing in your file)
+  // 2) Projects
   const projects = await prisma.project.findMany({
     where: { clientId: id },
     orderBy: { createdAt: "desc" },
@@ -57,7 +61,7 @@ export default async function ClientDetailPage({
   });
   const totalQuestions = questionnaire?.questions.length ?? 0;
 
-  // 4) Enrich projects with progress & last-saved
+  // 4) Enrich
   const enriched = await Promise.all(
     projects.map(async (p) => {
       const [answerCount, lastAnswer] = await Promise.all([
@@ -263,6 +267,11 @@ export default async function ClientDetailPage({
                             Reopen intake
                           </Button>
                         </form>
+                      )}
+
+                      {/* Delete (DRAFT only) - client-side confirm */}
+                      {p.status === ProjectStatus.DRAFT && (
+                        <DeleteProject projectId={p.id} clientId={client.id} />
                       )}
                     </div>
 
