@@ -35,22 +35,29 @@ function formatLastSaved(date: Date | null) {
 export default async function ClientDetailPage({
   params,
 }: {
-  params: { id: string };
+  // Next 15+: params is a Promise in RSC
+  params: Promise<{ id: string }>;
 }) {
-  const client = await prisma.client.findUnique({ where: { id: params.id } });
+  const { id } = await params;
+
+  // 1) Fetch client (and 404 if missing)
+  const client = await prisma.client.findUnique({ where: { id } });
   if (!client) return notFound();
 
+  // 2) Fetch projects for this client (this was missing in your file)
   const projects = await prisma.project.findMany({
-    where: { clientId: client.id },
+    where: { clientId: id },
     orderBy: { createdAt: "desc" },
   });
 
+  // 3) Questionnaire / counts
   const questionnaire = await prisma.questionnaire.findFirst({
     where: { isActive: true },
     include: { questions: true },
   });
   const totalQuestions = questionnaire?.questions.length ?? 0;
 
+  // 4) Enrich projects with progress & last-saved
   const enriched = await Promise.all(
     projects.map(async (p) => {
       const [answerCount, lastAnswer] = await Promise.all([
@@ -61,9 +68,12 @@ export default async function ClientDetailPage({
           select: { updatedAt: true },
         }),
       ]);
-      const pct = totalQuestions
-        ? Math.round((answerCount / totalQuestions) * 100)
-        : 0;
+
+      const pct =
+        totalQuestions > 0
+          ? Math.round((answerCount / totalQuestions) * 100)
+          : 0;
+
       return {
         ...p,
         answerCount,
@@ -85,9 +95,7 @@ export default async function ClientDetailPage({
           <h1 className="mt-1 text-3xl font-semibold tracking-tight">
             {client.name}
           </h1>
-          <p className="text-sm opacity-70">
-            {client.industry ? client.industry : "—"}
-          </p>
+          <p className="text-sm opacity-70">{client.industry || "—"}</p>
         </div>
         <Link href="/clients" className="text-sm underline underline-offset-4">
           ← All clients
