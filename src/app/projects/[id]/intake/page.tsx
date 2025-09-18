@@ -13,9 +13,7 @@ import {
 
 export const dynamic = "force-dynamic";
 
-type PageProps = { params: { id: string } };
-
-// helper (same one you already use; keep your version if present)
+// Helper
 function formatPhase(p: Phase): string {
   switch (p) {
     case "DISCOVERY":
@@ -37,10 +35,16 @@ function formatPhase(p: Phase): string {
   }
 }
 
-export default async function ProjectIntakePage({ params }: PageProps) {
+export default async function ProjectIntakePage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
+
   // Load project + client
   const project = await prisma.project.findUnique({
-    where: { id: params.id },
+    where: { id },
     include: { client: true },
   });
   if (!project) return notFound();
@@ -71,12 +75,12 @@ export default async function ProjectIntakePage({ params }: PageProps) {
     select: { questionId: true, value: true },
   });
 
-  // value is already a string in your schema, so no need to JSON.stringify here
+  // Map questionId -> value
   const ansMap = new Map<string, string>(
     answers.map((a) => [a.questionId, a.value] as const)
   );
 
-  // Group questions by phase (strictly typed, no `any`)
+  // Group questions by phase
   const grouped: Record<Phase, Question[]> = Object.values(Phase).reduce(
     (acc, ph) => {
       acc[ph as Phase] = [];
@@ -84,10 +88,7 @@ export default async function ProjectIntakePage({ params }: PageProps) {
     },
     {} as Record<Phase, Question[]>
   );
-
-  for (const q of questionnaire.questions) {
-    grouped[q.phase].push(q);
-  }
+  for (const q of questionnaire.questions) grouped[q.phase].push(q);
 
   // Simple progress
   const total = questionnaire.questions.length;
@@ -117,9 +118,8 @@ export default async function ProjectIntakePage({ params }: PageProps) {
       <div className="rounded-2xl border p-6 space-y-4">
         <Progress value={pct} label={`${answered}/${total} answered`} />
 
-        {/* When locked: no autosave wrapper. When editable: keep autosave. */}
         {isLocked ? (
-          // READ-ONLY RENDER
+          // READ-ONLY
           <fieldset disabled className="space-y-8">
             {Object.values(Phase).map((ph) => {
               const qs = grouped[ph] || [];
@@ -127,9 +127,9 @@ export default async function ProjectIntakePage({ params }: PageProps) {
 
               return (
                 <section key={ph} className="space-y-4 rounded-2xl border p-6">
-                  <h2 className="text-xl font-semibold">{`Phase ${formatPhase(
-                    ph
-                  )}`}</h2>
+                  <h2 className="text-xl font-semibold">
+                    {`Phase ${formatPhase(ph)}`}
+                  </h2>
 
                   <div className="space-y-6">
                     {qs.map((q, idx) => {
@@ -142,7 +142,6 @@ export default async function ProjectIntakePage({ params }: PageProps) {
                             {`${idx + 1}. ${q.questionText}`}
                           </label>
 
-                          {/* Inputs are disabled by fieldset; we still show values */}
                           {q.type === "TEXT" && (
                             <input
                               id={name}
@@ -186,8 +185,6 @@ export default async function ProjectIntakePage({ params }: PageProps) {
                                 ))}
                               </select>
                             )}
-
-                          {/* Add any other types you support, all rendered read-only */}
                         </div>
                       );
                     })}
@@ -207,9 +204,9 @@ export default async function ProjectIntakePage({ params }: PageProps) {
 
               return (
                 <section key={ph} className="space-y-4 rounded-2xl border p-6">
-                  <h2 className="text-xl font-semibold">{`Phase ${formatPhase(
-                    ph
-                  )}`}</h2>
+                  <h2 className="text-xl font-semibold">
+                    {`Phase ${formatPhase(ph)}`}
+                  </h2>
 
                   <div className="space-y-6">
                     {qs.map((q, idx) => {

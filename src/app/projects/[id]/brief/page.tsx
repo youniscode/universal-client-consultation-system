@@ -9,9 +9,11 @@ export const dynamic = "force-dynamic";
 export default async function BriefPage({
   params,
 }: {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }) {
-  const projectId = params.id;
+  const { id } = await params;
+  const projectId = id;
+
   const { project, html } = await buildBrief(projectId);
 
   const latest = await prisma.proposal.findFirst({
