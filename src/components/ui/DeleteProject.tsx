@@ -1,19 +1,22 @@
 "use client";
 
 import Button from "@/components/ui/button";
-import { deleteProject } from "@/actions/projects";
+import { deleteProjectAndRedirect } from "@/actions/projects";
 
-type Props = {
+export default function DeleteProject({
+  projectId,
+  clientId,
+  name,
+}: {
   projectId: string;
   clientId: string;
-};
-
-export default function DeleteProject({ projectId, clientId }: Props) {
+  name: string;
+}) {
   return (
     <form
-      action={deleteProject}
+      action={deleteProjectAndRedirect}
       onSubmit={(e) => {
-        if (!confirm("Delete this project? This cannot be undone.")) {
+        if (!confirm(`Delete project “${name}”? This cannot be undone.`)) {
           e.preventDefault();
         }
       }}

@@ -1,18 +1,23 @@
 // src/app/clients/[id]/page.tsx
+
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import Button from "@/components/ui/button";
 import Progress from "@/components/ui/progress";
 import Card from "@/components/ui/card";
-import EmptyState from "@/components/ui/empty-state"; // NEW
-import DeleteProject from "@/components/ui/DeleteProject"; // NEW
+import StatusPill from "@/components/ui/StatusPill";
+import FlashToast from "@/components/ui/FlashToast";
+
 import {
   createProject,
   updateProject,
   markIntakeSubmitted,
   reopenIntake,
 } from "@/actions/projects";
+
+import DeleteProject from "@/components/ui/DeleteProject";
+
 import {
   ProjectType,
   ComplexityLevel,
@@ -41,30 +46,45 @@ export default async function ClientDetailPage({
 }) {
   const { id } = await params;
 
+  // 1) Fetch client
   const client = await prisma.client.findUnique({ where: { id } });
   if (!client) return notFound();
 
+  // 2) Fetch projects
   const projects = await prisma.project.findMany({
     where: { clientId: id },
     orderBy: { createdAt: "desc" },
   });
 
+  // 3) Questionnaire / counts
   const questionnaire = await prisma.questionnaire.findFirst({
     where: { isActive: true },
     include: { questions: true },
   });
   const totalQuestions = questionnaire?.questions.length ?? 0;
 
+  // 4) Enrich projects with progress & last-saved (count DISTINCT answered questions with non-empty values)
   const enriched = await Promise.all(
     projects.map(async (p) => {
-      const [answerCount, lastAnswer] = await Promise.all([
-        prisma.answer.count({ where: { projectId: p.id } }),
-        prisma.answer.findFirst({
-          where: { projectId: p.id },
-          orderBy: { updatedAt: "desc" },
-          select: { updatedAt: true },
-        }),
-      ]);
+      // Count distinct answered questions (non-empty)
+      const answered = await prisma.answer.findMany({
+        where: {
+          projectId: p.id,
+          // treat "", "  " as empty; if you allow JSON/text, adjust this predicate
+          value: { not: "" },
+        },
+        distinct: ["questionId"],
+        select: { questionId: true },
+      });
+
+      const answerCount = answered.length;
+
+      // Last update time from any answer
+      const lastAnswer = await prisma.answer.findFirst({
+        where: { projectId: p.id },
+        orderBy: { updatedAt: "desc" },
+        select: { updatedAt: true },
+      });
 
       const pct =
         totalQuestions > 0
@@ -100,7 +120,7 @@ export default async function ClientDetailPage({
       </div>
 
       <section className="grid gap-6 md:grid-cols-2">
-        {/* New Project */}
+        {/* New project */}
         <Card className="p-6">
           <h2 className="text-lg font-medium">New Project</h2>
           <form
@@ -118,6 +138,7 @@ export default async function ClientDetailPage({
                 id="name"
                 name="name"
                 required
+                className="ui-input"
                 placeholder="Website redesign"
               />
             </div>
@@ -129,6 +150,7 @@ export default async function ClientDetailPage({
               <select
                 id="projectType"
                 name="projectType"
+                className="ui-select"
                 defaultValue={ProjectType.WEBSITE}
               >
                 {Object.values(ProjectType).map((opt) => (
@@ -171,10 +193,9 @@ export default async function ClientDetailPage({
           <h2 className="text-lg font-medium">Projects</h2>
 
           {enriched.length === 0 ? (
-            <EmptyState
-              title="No projects yet"
-              description="Create a project to launch the questionnaire and generate a brief."
-            />
+            <div className="mt-6 rounded-lg border border-dashed p-8 text-center text-sm opacity-70">
+              No projects yet.
+            </div>
           ) : (
             <ul className="mt-4 space-y-3">
               {enriched.map((p) => {
@@ -201,11 +222,7 @@ export default async function ClientDetailPage({
                           {formatLastSaved(p.lastSaved)}
                         </div>
                       </div>
-                      {isSubmitted && (
-                        <span className="rounded-full border px-2 py-1 text-xs">
-                          Submitted
-                        </span>
-                      )}
+                      <StatusPill status={p.status} />
                     </div>
 
                     <div className="mt-3">
@@ -258,8 +275,13 @@ export default async function ClientDetailPage({
                         </form>
                       )}
 
+                      {/* Delete (now using client component) */}
                       {p.status === ProjectStatus.DRAFT && (
-                        <DeleteProject projectId={p.id} clientId={client.id} />
+                        <DeleteProject
+                          projectId={p.id}
+                          clientId={client.id}
+                          name={p.name}
+                        />
                       )}
                     </div>
 
@@ -268,6 +290,7 @@ export default async function ClientDetailPage({
                       <summary className="cursor-pointer text-sm font-medium">
                         Edit project
                       </summary>
+
                       <form
                         action={updateProject}
                         className="mt-3 space-y-3"
@@ -281,13 +304,17 @@ export default async function ClientDetailPage({
                         />
 
                         <div className="space-y-2">
-                          <label htmlFor={`name-${p.id}`} className="ui-label">
+                          <label
+                            htmlFor={`name-${p.id}`}
+                            className="block text-sm font-medium"
+                          >
                             Name
                           </label>
                           <input
                             id={`name-${p.id}`}
                             name="name"
                             defaultValue={p.name}
+                            className="ui-input"
                           />
                         </div>
 
@@ -336,6 +363,8 @@ export default async function ClientDetailPage({
           )}
         </Card>
       </section>
+
+      <FlashToast />
     </main>
   );
 }
@@ -357,10 +386,15 @@ function FieldSelect({
 }) {
   return (
     <div className="space-y-2">
-      <label htmlFor={id} className="ui-label">
+      <label htmlFor={id} className="block text-sm font-medium">
         {label}
       </label>
-      <select id={id} name={name} defaultValue={defaultValue}>
+      <select
+        id={id}
+        name={name}
+        className="ui-select"
+        defaultValue={defaultValue}
+      >
         {allowEmpty && <option value="">(unspecified)</option>}
         {options.map((opt) => (
           <option key={opt} value={opt}>
