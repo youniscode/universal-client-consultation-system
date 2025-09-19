@@ -1,5 +1,4 @@
 // src/app/clients/[id]/page.tsx
-
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
@@ -7,17 +6,13 @@ import Button from "@/components/ui/button";
 import Progress from "@/components/ui/progress";
 import Card from "@/components/ui/card";
 import StatusPill from "@/components/ui/StatusPill";
-import FlashToast from "@/components/ui/FlashToast";
-
+import DeleteProject from "@/components/ui/DeleteProject";
 import {
   createProject,
   updateProject,
   markIntakeSubmitted,
   reopenIntake,
 } from "@/actions/projects";
-
-import DeleteProject from "@/components/ui/DeleteProject";
-
 import {
   ProjectType,
   ComplexityLevel,
@@ -42,15 +37,16 @@ function formatLastSaved(date: Date | null) {
 export default async function ClientDetailPage({
   params,
 }: {
+  // Next 15+: params is a Promise in RSC
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
 
-  // 1) Fetch client
+  // 1) Fetch client (and 404 if missing)
   const client = await prisma.client.findUnique({ where: { id } });
   if (!client) return notFound();
 
-  // 2) Fetch projects
+  // 2) Fetch projects for this client
   const projects = await prisma.project.findMany({
     where: { clientId: id },
     orderBy: { createdAt: "desc" },
@@ -63,37 +59,32 @@ export default async function ClientDetailPage({
   });
   const totalQuestions = questionnaire?.questions.length ?? 0;
 
-  // 4) Enrich projects with progress & last-saved (count DISTINCT answered questions with non-empty values)
+  // 4) Enrich projects with progress & last-saved (distinct answered questions)
+  // 4) Enrich projects with progress & last-saved
   const enriched = await Promise.all(
     projects.map(async (p) => {
-      // Count distinct answered questions (non-empty)
-      const answered = await prisma.answer.findMany({
-        where: {
-          projectId: p.id,
-          // treat "", "  " as empty; if you allow JSON/text, adjust this predicate
-          value: { not: "" },
-        },
-        distinct: ["questionId"],
-        select: { questionId: true },
-      });
-
-      const answerCount = answered.length;
-
-      // Last update time from any answer
-      const lastAnswer = await prisma.answer.findFirst({
-        where: { projectId: p.id },
-        orderBy: { updatedAt: "desc" },
-        select: { updatedAt: true },
-      });
+      const [answeredCount, lastAnswer] = await Promise.all([
+        prisma.answer.count({
+          where: {
+            projectId: p.id,
+            NOT: { value: "" }, // <-- only count real, non-empty answers
+          },
+        }),
+        prisma.answer.findFirst({
+          where: { projectId: p.id },
+          orderBy: { updatedAt: "desc" },
+          select: { updatedAt: true },
+        }),
+      ]);
 
       const pct =
         totalQuestions > 0
-          ? Math.round((answerCount / totalQuestions) * 100)
+          ? Math.round((answeredCount / totalQuestions) * 100)
           : 0;
 
       return {
         ...p,
-        answerCount,
+        answerCount: answeredCount,
         totalQuestions,
         pct,
         lastSaved: lastAnswer?.updatedAt ?? null,
@@ -131,26 +122,29 @@ export default async function ClientDetailPage({
             <input type="hidden" name="clientId" value={client.id} />
 
             <div className="space-y-2">
-              <label htmlFor="name" className="ui-label">
+              <label htmlFor="name" className="block text-sm font-medium">
                 Project Name
               </label>
               <input
                 id="name"
                 name="name"
                 required
-                className="ui-input"
+                className="w-full rounded-md border px-3 py-2"
                 placeholder="Website redesign"
               />
             </div>
 
             <div className="space-y-2">
-              <label htmlFor="projectType" className="ui-label">
+              <label
+                htmlFor="projectType"
+                className="block text-sm font-medium"
+              >
                 Project Type
               </label>
               <select
                 id="projectType"
                 name="projectType"
-                className="ui-select"
+                className="w-full rounded-md border px-3 py-2"
                 defaultValue={ProjectType.WEBSITE}
               >
                 {Object.values(ProjectType).map((opt) => (
@@ -204,7 +198,6 @@ export default async function ClientDetailPage({
                     ? `${p.answerCount}/${p.totalQuestions} answered`
                     : "No questionnaire";
 
-                const isSubmitted = p.status === ProjectStatus.SUBMITTED;
                 const canMarkSubmitted =
                   p.status !== ProjectStatus.SUBMITTED && p.pct === 100;
                 const canReopen = p.status === ProjectStatus.SUBMITTED;
@@ -214,7 +207,8 @@ export default async function ClientDetailPage({
                     key={p.id}
                     className="rounded-lg border p-4 transition hover:bg-ink-50/40"
                   >
-                    <div className="flex items-center justify-between">
+                    {/* Row: name + status */}
+                    <div className="flex items-center justify-between gap-3">
                       <div>
                         <div className="font-medium">{p.name}</div>
                         <div className="text-sm opacity-70">
@@ -225,6 +219,7 @@ export default async function ClientDetailPage({
                       <StatusPill status={p.status} />
                     </div>
 
+                    {/* Progress */}
                     <div className="mt-3">
                       <Progress value={p.pct} label={label} />
                     </div>
@@ -236,7 +231,7 @@ export default async function ClientDetailPage({
                         prefetch
                         className="inline-flex items-center rounded-md border px-3 py-2 text-sm hover:bg-ink-50"
                       >
-                        {isSubmitted
+                        {p.status === ProjectStatus.SUBMITTED
                           ? "View questionnaire"
                           : "Resume questionnaire"}
                       </Link>
@@ -256,7 +251,7 @@ export default async function ClientDetailPage({
                             await markIntakeSubmitted(p.id, client.id);
                           }}
                         >
-                          <Button type="submit" size="sm">
+                          <Button type="submit" size="sm" variant="primary">
                             Mark as submitted
                           </Button>
                         </form>
@@ -269,13 +264,13 @@ export default async function ClientDetailPage({
                             await reopenIntake(p.id, client.id);
                           }}
                         >
-                          <Button type="submit" variant="destructive" size="sm">
+                          <Button type="submit" size="sm">
                             Reopen intake
                           </Button>
                         </form>
                       )}
 
-                      {/* Delete (now using client component) */}
+                      {/* Delete (DRAFT only) */}
                       {p.status === ProjectStatus.DRAFT && (
                         <DeleteProject
                           projectId={p.id}
@@ -314,7 +309,7 @@ export default async function ClientDetailPage({
                             id={`name-${p.id}`}
                             name="name"
                             defaultValue={p.name}
-                            className="ui-input"
+                            className="w-full rounded-md border px-3 py-2"
                           />
                         </div>
 
@@ -363,8 +358,6 @@ export default async function ClientDetailPage({
           )}
         </Card>
       </section>
-
-      <FlashToast />
     </main>
   );
 }
@@ -392,7 +385,7 @@ function FieldSelect({
       <select
         id={id}
         name={name}
-        className="ui-select"
+        className="w-full rounded-md border px-3 py-2"
         defaultValue={defaultValue}
       >
         {allowEmpty && <option value="">(unspecified)</option>}
