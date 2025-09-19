@@ -1,19 +1,23 @@
 // src/components/ui/card.tsx
+import * as React from "react";
 import { cn } from "@/lib/utils";
 
-export default function Card(
-  props: React.HTMLAttributes<HTMLDivElement> & { hover?: boolean }
-) {
-  const { className, hover = true, ...rest } = props;
+type CardProps = React.HTMLAttributes<HTMLDivElement> & {
+  /**
+   * If true, adds a tiny lift on hover (for clickable cards/lists).
+   */
+  hoverable?: boolean;
+};
+
+export default function Card({ className, hoverable, ...props }: CardProps) {
   return (
     <div
       className={cn(
-        "rounded-xl border border-ink-200/70 bg-white shadow-[0_1px_2px_rgb(16_24_40/0.04)]",
-        hover &&
-          "transition hover:shadow-[0_12px_24px_-10px_rgb(16_24_40/0.18)]",
+        "rounded-2xl border bg-white shadow-card",
+        hoverable && "transition hover:-translate-y-0.5 hover:shadow-md",
         className
       )}
-      {...rest}
+      {...props}
     />
   );
 }

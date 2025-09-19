@@ -2,19 +2,17 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
-
 import Button from "@/components/ui/button";
 import Progress from "@/components/ui/progress";
 import Card from "@/components/ui/card";
-import DeleteProject from "@/components/ui/DeleteProject";
-
+import EmptyState from "@/components/ui/empty-state"; // NEW
+import DeleteProject from "@/components/ui/DeleteProject"; // NEW
 import {
   createProject,
   updateProject,
   markIntakeSubmitted,
   reopenIntake,
 } from "@/actions/projects";
-
 import {
   ProjectType,
   ComplexityLevel,
@@ -39,29 +37,24 @@ function formatLastSaved(date: Date | null) {
 export default async function ClientDetailPage({
   params,
 }: {
-  // Next 15 App Router: params is a Promise in RSCs
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
 
-  // 1) Client
   const client = await prisma.client.findUnique({ where: { id } });
   if (!client) return notFound();
 
-  // 2) Projects
   const projects = await prisma.project.findMany({
     where: { clientId: id },
     orderBy: { createdAt: "desc" },
   });
 
-  // 3) Questionnaire / counts
   const questionnaire = await prisma.questionnaire.findFirst({
     where: { isActive: true },
     include: { questions: true },
   });
   const totalQuestions = questionnaire?.questions.length ?? 0;
 
-  // 4) Enrich
   const enriched = await Promise.all(
     projects.map(async (p) => {
       const [answerCount, lastAnswer] = await Promise.all([
@@ -107,7 +100,7 @@ export default async function ClientDetailPage({
       </div>
 
       <section className="grid gap-6 md:grid-cols-2">
-        {/* New project */}
+        {/* New Project */}
         <Card className="p-6">
           <h2 className="text-lg font-medium">New Project</h2>
           <form
@@ -118,29 +111,24 @@ export default async function ClientDetailPage({
             <input type="hidden" name="clientId" value={client.id} />
 
             <div className="space-y-2">
-              <label htmlFor="name" className="block text-sm font-medium">
+              <label htmlFor="name" className="ui-label">
                 Project Name
               </label>
               <input
                 id="name"
                 name="name"
                 required
-                className="w-full rounded-md border px-3 py-2"
                 placeholder="Website redesign"
               />
             </div>
 
             <div className="space-y-2">
-              <label
-                htmlFor="projectType"
-                className="block text-sm font-medium"
-              >
+              <label htmlFor="projectType" className="ui-label">
                 Project Type
               </label>
               <select
                 id="projectType"
                 name="projectType"
-                className="w-full rounded-md border px-3 py-2"
                 defaultValue={ProjectType.WEBSITE}
               >
                 {Object.values(ProjectType).map((opt) => (
@@ -183,9 +171,10 @@ export default async function ClientDetailPage({
           <h2 className="text-lg font-medium">Projects</h2>
 
           {enriched.length === 0 ? (
-            <div className="mt-6 rounded-lg border border-dashed p-8 text-center text-sm opacity-70">
-              No projects yet.
-            </div>
+            <EmptyState
+              title="No projects yet"
+              description="Create a project to launch the questionnaire and generate a brief."
+            />
           ) : (
             <ul className="mt-4 space-y-3">
               {enriched.map((p) => {
@@ -269,7 +258,6 @@ export default async function ClientDetailPage({
                         </form>
                       )}
 
-                      {/* Delete (DRAFT only) - client-side confirm */}
                       {p.status === ProjectStatus.DRAFT && (
                         <DeleteProject projectId={p.id} clientId={client.id} />
                       )}
@@ -280,7 +268,6 @@ export default async function ClientDetailPage({
                       <summary className="cursor-pointer text-sm font-medium">
                         Edit project
                       </summary>
-
                       <form
                         action={updateProject}
                         className="mt-3 space-y-3"
@@ -294,17 +281,13 @@ export default async function ClientDetailPage({
                         />
 
                         <div className="space-y-2">
-                          <label
-                            htmlFor={`name-${p.id}`}
-                            className="block text-sm font-medium"
-                          >
+                          <label htmlFor={`name-${p.id}`} className="ui-label">
                             Name
                           </label>
                           <input
                             id={`name-${p.id}`}
                             name="name"
                             defaultValue={p.name}
-                            className="w-full rounded-md border px-3 py-2"
                           />
                         </div>
 
@@ -374,15 +357,10 @@ function FieldSelect({
 }) {
   return (
     <div className="space-y-2">
-      <label htmlFor={id} className="block text-sm font-medium">
+      <label htmlFor={id} className="ui-label">
         {label}
       </label>
-      <select
-        id={id}
-        name={name}
-        className="w-full rounded-md border px-3 py-2"
-        defaultValue={defaultValue}
-      >
+      <select id={id} name={name} defaultValue={defaultValue}>
         {allowEmpty && <option value="">(unspecified)</option>}
         {options.map((opt) => (
           <option key={opt} value={opt}>
