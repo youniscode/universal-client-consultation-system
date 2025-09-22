@@ -2,17 +2,21 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
+
 import Button from "@/components/ui/button";
 import Progress from "@/components/ui/progress";
 import Card from "@/components/ui/card";
 import StatusPill from "@/components/ui/StatusPill";
 import DeleteProject from "@/components/ui/DeleteProject";
+import Chip from "@/components/ui/Chip";
+
 import {
   createProject,
   updateProject,
   markIntakeSubmitted,
   reopenIntake,
 } from "@/actions/projects";
+
 import {
   ProjectType,
   ComplexityLevel,
@@ -59,15 +63,14 @@ export default async function ClientDetailPage({
   });
   const totalQuestions = questionnaire?.questions.length ?? 0;
 
-  // 4) Enrich projects with progress & last-saved (distinct answered questions)
-  // 4) Enrich projects with progress & last-saved
+  // 4) Enrich projects with progress & last-saved (count only non-empty answers)
   const enriched = await Promise.all(
     projects.map(async (p) => {
       const [answeredCount, lastAnswer] = await Promise.all([
         prisma.answer.count({
           where: {
             projectId: p.id,
-            NOT: { value: "" }, // <-- only count real, non-empty answers
+            NOT: { value: "" }, // only real, non-empty answers
           },
         }),
         prisma.answer.findFirst({
@@ -208,15 +211,27 @@ export default async function ClientDetailPage({
                     className="rounded-lg border p-4 transition hover:bg-ink-50/40"
                   >
                     {/* Row: name + status */}
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <div className="font-medium">{p.name}</div>
-                        <div className="text-sm opacity-70">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="font-medium truncate">{p.name}</div>
+                        <div
+                          className="text-sm opacity-70"
+                          title={
+                            p.lastSaved ? p.lastSaved.toLocaleString() : "Never"
+                          }
+                        >
                           {p.projectType} • Last saved:{" "}
                           {formatLastSaved(p.lastSaved)}
                         </div>
                       </div>
                       <StatusPill status={p.status} />
+                    </div>
+
+                    {/* Meta chips */}
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      <Chip title="Project Type">{p.projectType}</Chip>
+                      <Chip title="Budget">{p.budget ?? "—"}</Chip>
+                      <Chip title="Timeline">{p.timeline ?? "—"}</Chip>
                     </div>
 
                     {/* Progress */}
