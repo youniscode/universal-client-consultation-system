@@ -1,22 +1,63 @@
 // src/app/clients/page.tsx
 import Link from "next/link";
 import { prisma } from "@/lib/db";
-import Card from "@/components/ui/card";
 import Button from "@/components/ui/button";
-import DeleteClient from "@/components/ui/DeleteClient"; // NEW
-import EmptyState from "@/components/ui/empty-state"; // NEW
+import DeleteClient from "@/components/ui/DeleteClient";
+import EmptyState from "@/components/ui/empty-state";
+import type { Prisma } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
 
-export default async function ClientsPage() {
-  const clients = await prisma.client.findMany({
+// Tiny pill chip
+function Chip({
+  children,
+  className = "",
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <span
+      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${className}`}
+    >
+      {children}
+    </span>
+  );
+}
+
+// Strongly-typed payload so TS knows `_count` exists.
+type ClientWithCounts = Prisma.ClientGetPayload<{
+  include: { _count: { select: { projects: true } } };
+}>;
+
+export default async function ClientsPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const sp = await searchParams;
+  const q = Array.isArray(sp.q) ? sp.q[0] : sp.q ?? "";
+
+  // Build a Prisma-safe `where`
+  let where: Prisma.ClientWhereInput = {};
+  if (q.trim().length > 0) {
+    where = {
+      OR: [
+        { name: { contains: q, mode: "insensitive" } },
+        { industry: { contains: q, mode: "insensitive" } },
+      ],
+    };
+  }
+
+  const clients = (await prisma.client.findMany({
+    where,
     orderBy: { createdAt: "desc" },
     include: { _count: { select: { projects: true } } },
-  });
+  })) as ClientWithCounts[];
 
   return (
     <main className="p-8 space-y-8">
-      {/* New Client Form */}
+      {/* New Client */}
       <section className="rounded-2xl border p-6">
         <h2 className="text-lg font-medium">New Client</h2>
         <form
@@ -81,24 +122,67 @@ export default async function ClientsPage() {
 
       {/* All Clients */}
       <section className="rounded-2xl border p-6 space-y-4">
-        <h2 className="text-lg font-medium">All Clients</h2>
+        <div className="flex items-end justify-between">
+          <h2 className="text-lg font-medium">All Clients</h2>
+
+          {/* Search bar */}
+          <form method="get" className="flex gap-2">
+            <input
+              name="q"
+              defaultValue={q}
+              placeholder="Search name or industry…"
+              className="w-[22ch] rounded-md border bg-white px-3 py-2 text-sm shadow-sm placeholder:text-ink-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/50"
+            />
+            <Button type="submit" className="text-white" variant="primary">
+              Search
+            </Button>
+            {q ? (
+              <Link
+                href="/clients"
+                className="inline-flex items-center rounded-md border px-3 py-2 text-sm hover:bg-ink-50"
+              >
+                Clear
+              </Link>
+            ) : null}
+          </form>
+        </div>
+
         {clients.length === 0 ? (
           <EmptyState
-            title="No clients yet"
-            description="Create your first client to get started with projects and intakes."
+            title={q ? "No matches" : "No clients yet"}
+            description={
+              q
+                ? `No clients match “${q}”.`
+                : "Create your first client to get started with projects and intakes."
+            }
           />
         ) : (
           <ul className="space-y-3">
             {clients.map((c) => (
               <li
                 key={c.id}
-                className="rounded-lg border p-4 flex items-center justify-between"
+                className="rounded-lg border bg-white p-4 flex items-center justify-between transition hover:shadow-card"
               >
                 <div>
                   <div className="font-medium">{c.name}</div>
-                  <div className="text-sm opacity-70">
-                    {c.clientType} • {c.industry || "—"} •{" "}
-                    {c._count.projects ?? 0} projects
+                  <div className="mt-1 flex flex-wrap gap-1.5 text-xs">
+                    {/* Type */}
+                    <Chip className="border border-ink-200 bg-ink-50 text-ink-800">
+                      {c.clientType}
+                    </Chip>
+
+                    {/* Industry */}
+                    {c.industry ? (
+                      <Chip className="border border-ink-200 bg-ink-50 text-ink-700">
+                        {c.industry}
+                      </Chip>
+                    ) : null}
+
+                    {/* Project count */}
+                    <Chip className="border border-brand-200 bg-brand-50 text-brand-700">
+                      {c._count.projects} project
+                      {c._count.projects === 1 ? "" : "s"}
+                    </Chip>
                   </div>
                 </div>
 

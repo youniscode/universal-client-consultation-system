@@ -2,6 +2,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import AppShell from "@/components/ui/AppShell";
+import Toaster from "@/components/ui/toast";
 
 export const metadata: Metadata = {
   title: "UCCS",
@@ -15,8 +16,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className="antialiased">
+      <body className="bg-ink-50/60 text-ink-900 antialiased">
         <AppShell>{children}</AppShell>
+        <Toaster />
       </body>
     </html>
   );
