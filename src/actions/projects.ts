@@ -78,7 +78,8 @@ export async function createProject(formData: FormData): Promise<void> {
         },
     });
 
-    revalidatePath(`/clients/${parsed.data.clientId}`);
+    // Redirect so the layout/page can read ?toast=...
+    redirect(`/clients/${parsed.data.clientId}?toast=project_created`);
 }
 
 /* ──────────────────────────────────────────────────────────
@@ -90,8 +91,7 @@ export async function markIntakeSubmitted(projectId: string, clientId: string): 
         data: { status: ProjectStatus.SUBMITTED },
     });
 
-    revalidatePath(`/clients/${clientId}`);
-    revalidatePath(`/projects/${projectId}/intake`);
+    redirect(`/clients/${clientId}?toast=submitted`);
 }
 
 export async function reopenIntake(projectId: string, clientId: string): Promise<void> {
@@ -100,8 +100,7 @@ export async function reopenIntake(projectId: string, clientId: string): Promise
         data: { status: ProjectStatus.DRAFT },
     });
 
-    revalidatePath(`/clients/${clientId}`);
-    revalidatePath(`/projects/${projectId}/intake`);
+    redirect(`/clients/${clientId}?toast=reopened`);
 }
 
 /* ──────────────────────────────────────────────────────────

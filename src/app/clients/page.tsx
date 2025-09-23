@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import Button from "@/components/ui/button";
 import DeleteClient from "@/components/ui/DeleteClient";
 import EmptyState from "@/components/ui/empty-state";
+import { FlashToastOnLoad } from "@/components/ui/toast";
 import type { Prisma } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
@@ -38,6 +39,21 @@ export default async function ClientsPage({
   const sp = await searchParams;
   const q = Array.isArray(sp.q) ? sp.q[0] : sp.q ?? "";
 
+  // Optional: map ?toast=... to a message for floating toast
+  const toastCode = Array.isArray(sp.toast) ? sp.toast[0] : sp.toast;
+  const toastMessage =
+    toastCode === "created"
+      ? "Client created."
+      : toastCode === "deleted"
+      ? "Client deleted."
+      : toastCode === "project_created"
+      ? "Project created."
+      : toastCode === "submitted"
+      ? "Intake marked as submitted."
+      : toastCode === "reopened"
+      ? "Intake reopened (back to Draft)."
+      : undefined;
+
   // Build a Prisma-safe `where`
   let where: Prisma.ClientWhereInput = {};
   if (q.trim().length > 0) {
@@ -57,6 +73,9 @@ export default async function ClientsPage({
 
   return (
     <main className="p-8 space-y-8">
+      {/* fire a floating toast on load (if any) */}
+      <FlashToastOnLoad message={toastMessage} variant="success" />
+
       {/* New Client */}
       <section className="rounded-2xl border p-6">
         <h2 className="text-lg font-medium">New Client</h2>
