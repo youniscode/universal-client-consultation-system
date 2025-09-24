@@ -9,6 +9,7 @@ export const metadata: Metadata = {
   description: "Universal Client Consultation System",
 };
 
+
 export default function RootLayout({
   children,
 }: {
