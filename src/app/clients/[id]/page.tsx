@@ -2,21 +2,19 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
-
 import Button from "@/components/ui/button";
 import Progress from "@/components/ui/progress";
 import Card from "@/components/ui/card";
 import StatusPill from "@/components/ui/StatusPill";
 import DeleteProject from "@/components/ui/DeleteProject";
-import Chip from "@/components/ui/Chip";
-
 import {
   createProject,
   updateProject,
-  markIntakeSubmitted,
-  reopenIntake,
+  // redirecting versions to drive toasts:
+  submitProjectAndRedirect,
+  reopenProjectAndRedirect,
+  // you can also swap DeleteProject to use deleteProjectAndRedirect later
 } from "@/actions/projects";
-
 import {
   ProjectType,
   ComplexityLevel,
@@ -24,6 +22,7 @@ import {
   Timeline,
   ProjectStatus,
 } from "@prisma/client";
+import { FlashToastOnLoad } from "@/components/ui/toast";
 
 export const dynamic = "force-dynamic";
 
@@ -40,11 +39,23 @@ function formatLastSaved(date: Date | null) {
 
 export default async function ClientDetailPage({
   params,
+  searchParams,
 }: {
-  // Next 15+: params is a Promise in RSC
   params: Promise<{ id: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const { id } = await params;
+  const [{ id }, sp] = await Promise.all([params, searchParams]);
+
+  // Map ?toast= to a human string for the global toaster
+  const toastParam = Array.isArray(sp.toast) ? sp.toast[0] : sp.toast ?? null;
+  const toastMessage =
+    toastParam === "submitted"
+      ? "Intake marked as submitted."
+      : toastParam === "reopened"
+      ? "Intake reopened (back to Draft)."
+      : toastParam === "deleted"
+      ? "Project deleted."
+      : null;
 
   // 1) Fetch client (and 404 if missing)
   const client = await prisma.client.findUnique({ where: { id } });
@@ -68,10 +79,7 @@ export default async function ClientDetailPage({
     projects.map(async (p) => {
       const [answeredCount, lastAnswer] = await Promise.all([
         prisma.answer.count({
-          where: {
-            projectId: p.id,
-            NOT: { value: "" }, // only real, non-empty answers
-          },
+          where: { projectId: p.id, NOT: { value: "" } },
         }),
         prisma.answer.findFirst({
           where: { projectId: p.id },
@@ -97,6 +105,9 @@ export default async function ClientDetailPage({
 
   return (
     <main className="space-y-10">
+      {/* Show a toast if ?toast=... is present */}
+      <FlashToastOnLoad message={toastMessage ?? undefined} variant="success" />
+
       {/* Header */}
       <div className="flex items-end justify-between">
         <div>
@@ -211,27 +222,15 @@ export default async function ClientDetailPage({
                     className="rounded-lg border p-4 transition hover:bg-ink-50/40"
                   >
                     {/* Row: name + status */}
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="font-medium truncate">{p.name}</div>
-                        <div
-                          className="text-sm opacity-70"
-                          title={
-                            p.lastSaved ? p.lastSaved.toLocaleString() : "Never"
-                          }
-                        >
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <div className="font-medium">{p.name}</div>
+                        <div className="text-sm opacity-70">
                           {p.projectType} • Last saved:{" "}
                           {formatLastSaved(p.lastSaved)}
                         </div>
                       </div>
                       <StatusPill status={p.status} />
-                    </div>
-
-                    {/* Meta chips */}
-                    <div className="mt-2 flex flex-wrap gap-1.5">
-                      <Chip title="Project Type">{p.projectType}</Chip>
-                      <Chip title="Budget">{p.budget ?? "—"}</Chip>
-                      <Chip title="Timeline">{p.timeline ?? "—"}</Chip>
                     </div>
 
                     {/* Progress */}
@@ -263,7 +262,7 @@ export default async function ClientDetailPage({
                         <form
                           action={async () => {
                             "use server";
-                            await markIntakeSubmitted(p.id, client.id);
+                            await submitProjectAndRedirect(p.id, client.id);
                           }}
                         >
                           <Button type="submit" size="sm" variant="primary">
@@ -276,7 +275,7 @@ export default async function ClientDetailPage({
                         <form
                           action={async () => {
                             "use server";
-                            await reopenIntake(p.id, client.id);
+                            await reopenProjectAndRedirect(p.id, client.id);
                           }}
                         >
                           <Button type="submit" size="sm">
@@ -285,7 +284,10 @@ export default async function ClientDetailPage({
                         </form>
                       )}
 
-                      {/* Delete (DRAFT only) */}
+                      {/* Delete (DRAFT only) — currently uses your component.
+                          If you want a toast on delete too, switch this to a form
+                          that posts to deleteProjectAndRedirect (and optionally
+                          add a tiny client confirm). */}
                       {p.status === ProjectStatus.DRAFT && (
                         <DeleteProject
                           projectId={p.id}

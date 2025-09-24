@@ -40,19 +40,19 @@ export default async function ClientsPage({
   const q = Array.isArray(sp.q) ? sp.q[0] : sp.q ?? "";
 
   // Optional: map ?toast=... to a message for floating toast
-  const toastCode = Array.isArray(sp.toast) ? sp.toast[0] : sp.toast;
+  const toastCode = Array.isArray(sp.toast) ? sp.toast[0] : sp.toast ?? null;
   const toastMessage =
-    toastCode === "created"
+    toastCode === "client+created" || toastCode === "created"
       ? "Client created."
-      : toastCode === "deleted"
+      : toastCode === "client+deleted" || toastCode === "deleted"
       ? "Client deleted."
-      : toastCode === "project_created"
+      : toastCode === "project+created" || toastCode === "project_created"
       ? "Project created."
       : toastCode === "submitted"
       ? "Intake marked as submitted."
       : toastCode === "reopened"
       ? "Intake reopened (back to Draft)."
-      : undefined;
+      : null;
 
   // Build a Prisma-safe `where`
   let where: Prisma.ClientWhereInput = {};
