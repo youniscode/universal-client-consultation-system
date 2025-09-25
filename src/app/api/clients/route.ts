@@ -1,68 +1,65 @@
 // src/app/api/clients/route.ts
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
 import { z } from "zod";
-import { ClientType, type Prisma } from "@prisma/client";
+import { prisma } from "@/lib/db";
+import { ClientType, Prisma } from "@prisma/client";
 
+// Match Prisma.ClientUncheckedCreateInput (nullable optionals)
 const schema = z.object({
-    name: z.string().min(2, "Client name is required"),
+    name: z.string().min(2, "Client name is required."),
     clientType: z.nativeEnum(ClientType).default("SMALL_BUSINESS"),
-    industry: z
-        .string()
-        .optional()
-        .transform((v) => (v && v.trim() ? v.trim() : null)),
-    contactName: z
-        .string()
-        .optional()
-        .transform((v) => (v && v.trim() ? v.trim() : null)),
-    contactEmail: z
-        .string()
-        .optional()
-        .transform((v) => (v && v.trim() ? v.trim() : null)),
+    industry: z.string().trim().optional().nullable(),
+    contactName: z.string().trim().optional().nullable(),
+    contactEmail: z.string().trim().email().optional().nullable(),
 });
+
+// helper: send a **relative** redirect so host is preserved on Render
+function redirectRelative(location: string) {
+    return new NextResponse(null, { status: 303, headers: { Location: location } });
+}
 
 export async function POST(req: Request) {
     try {
         const form = await req.formData();
 
+        // Raw strings from the form
         const raw = {
             name: String(form.get("name") ?? ""),
-            clientType: String(form.get("clientType") ?? "SMALL_BUSINESS") as ClientType,
-            industry: (form.get("industry") as string | null) ?? undefined,
-            contactName: (form.get("contactName") as string | null) ?? undefined,
-            contactEmail: (form.get("contactEmail") as string | null) ?? undefined,
+            clientType: (form.get("clientType") as string) || "SMALL_BUSINESS",
+            industry: (form.get("industry") as string | null) ?? null,
+            contactName: (form.get("contactName") as string | null) ?? null,
+            contactEmail: (form.get("contactEmail") as string | null) ?? null,
         };
 
         const parsed = schema.safeParse(raw);
         if (!parsed.success) {
-            return NextResponse.redirect(
-                new URL("/clients?toast=invalid+client+data", req.url),
-            );
+            return redirectRelative("/clients?toast=invalid+client+data");
         }
 
-        // REQUIRED: who owns this client?
+        // If your schema REQUIRES ownerId (non-nullable):
         const ownerId = process.env.DEFAULT_OWNER_ID;
+
+        // Guard so TS knows it's a string and to avoid runtime error
         if (!ownerId) {
-            console.error("DEFAULT_OWNER_ID is not set");
-            return NextResponse.redirect(
-                new URL("/clients?toast=missing+owner+config", req.url),
-            );
+            console.error("DEFAULT_OWNER_ID is missing. Set it in your env / Render.");
+            return redirectRelative("/clients?toast=server+missing+owner");
         }
 
-        const data: Prisma.ClientCreateInput = {
-            ...parsed.data,
-            owner: { connect: { id: ownerId } }, // 👈 satisfy required relation
+        // Build data with the now-guaranteed string ownerId
+        const data: Prisma.ClientUncheckedCreateInput = {
+            name: parsed.data.name,
+            clientType: parsed.data.clientType,
+            industry: parsed.data.industry ?? null,
+            contactName: parsed.data.contactName ?? null,
+            contactEmail: parsed.data.contactEmail ?? null,
+            ownerId, // <- string (not string | undefined), TS is happy
         };
 
         await prisma.client.create({ data });
 
-        return NextResponse.redirect(
-            new URL("/clients?toast=client+created", req.url),
-        );
+        return redirectRelative("/clients?toast=client+created");
     } catch (err) {
         console.error("Create client failed:", err);
-        return NextResponse.redirect(
-            new URL("/clients?toast=failed+to+create+client", req.url),
-        );
+        return redirectRelative("/clients?toast=failed+to+create+client");
     }
 }
