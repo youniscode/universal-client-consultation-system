@@ -4,7 +4,17 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { ClientType, Prisma } from "@prisma/client";
 
-// Mirror the Prisma create input (nullable optionals)
+// Build absolute redirect that works in Render
+function redirectAbsolute(req: Request, path: string) {
+    const xfProto = req.headers.get("x-forwarded-proto"); // https
+    const xfHost = req.headers.get("x-forwarded-host");   // your render.com domain
+    const host = xfHost ?? req.headers.get("host") ?? process.env.PUBLIC_ORIGIN ?? "localhost:3000";
+    const proto = xfProto ?? (host.startsWith("localhost") ? "http" : "https");
+    const origin = host.startsWith("http") ? host : `${proto}://${host}`;
+    const url = new URL(path.startsWith("/") ? path : `/${path}`, origin);
+    return NextResponse.redirect(url, 303);
+}
+
 const schema = z.object({
     name: z.string().min(2, "Client name is required."),
     clientType: z.nativeEnum(ClientType).default("SMALL_BUSINESS"),
@@ -13,22 +23,10 @@ const schema = z.object({
     contactEmail: z.string().transform(v => (v?.trim() ? v.trim() : null)).nullable().optional(),
 });
 
-// Always return an **absolute** redirect (more reliable behind proxies like Render)
-function redirectAbsolute(req: Request, pathAndQuery: string) {
-    const origin = new URL(req.url).origin;
-    return NextResponse.redirect(`${origin}${pathAndQuery}`, 303);
-}
-
 export async function POST(req: Request) {
     try {
-        // Ensure we have an owner id on the server (and that you created this row in "User")
-        const ownerId = process.env.DEFAULT_OWNER_ID;
-        if (!ownerId) {
-            console.error("Missing DEFAULT_OWNER_ID env var on server.");
-            return redirectAbsolute(req, "/clients?toast=missing+owner");
-        }
-
         const form = await req.formData();
+
         const raw = {
             name: String(form.get("name") ?? ""),
             clientType: (form.get("clientType") as string) || "SMALL_BUSINESS",
@@ -43,7 +41,8 @@ export async function POST(req: Request) {
             return redirectAbsolute(req, "/clients?toast=invalid+client+data");
         }
 
-        // Build payload (ownerId is required by your schema)
+        const ownerId = process.env.DEFAULT_OWNER_ID;
+
         const base = {
             name: parsed.data.name,
             clientType: parsed.data.clientType,
@@ -52,15 +51,17 @@ export async function POST(req: Request) {
             contactEmail: parsed.data.contactEmail ?? null,
         };
 
-        const data: Prisma.ClientUncheckedCreateInput = { ...base, ownerId };
+        // Use const here (no reassignment needed)
+        const data: Prisma.ClientUncheckedCreateInput = ownerId
+            ? { ...base, ownerId }
+            : (base as Prisma.ClientUncheckedCreateInput);
 
         await prisma.client.create({ data });
 
         return redirectAbsolute(req, "/clients?toast=client+created");
-    } catch (err: unknown) {
+    } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         console.error("Create client failed:", message);
-        // Common case: FK violation if the owner row doesn't exist
         return redirectAbsolute(req, "/clients?toast=failed+to+create+client");
     }
 }
