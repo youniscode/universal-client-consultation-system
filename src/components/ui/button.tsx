@@ -1,4 +1,3 @@
-// src/components/ui/button.tsx
 "use client";
 
 import * as React from "react";
@@ -16,8 +15,9 @@ export default function Button({
   size = "md",
   disabled,
   loading,
+  // IMPORTANT: do NOT default `type` here; let callers pass "submit" etc.
+  type,
   children,
-  type = "button",
   ...props
 }: ButtonProps) {
   const sizes: Record<NonNullable<ButtonProps["size"]>, string> = {
@@ -26,7 +26,6 @@ export default function Button({
     lg: "px-4 py-2.5",
   };
 
-  // Use Tailwind default palette so it always renders correctly
   const variants: Record<NonNullable<ButtonProps["variant"]>, string> = {
     primary:
       "bg-indigo-600 text-white hover:bg-indigo-700 focus-visible:ring-2 focus-visible:ring-indigo-500 shadow-sm",
@@ -44,7 +43,6 @@ export default function Button({
     <button
       type={type}
       disabled={isDisabled}
-      // omit aria-busy to silence the axe warning
       aria-live="polite"
       className={cn(
         "relative inline-flex items-center justify-center gap-2 rounded-md transition-colors",

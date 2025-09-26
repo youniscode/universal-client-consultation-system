@@ -1,4 +1,3 @@
-// src/app/api/clients/route.ts
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
@@ -47,7 +46,7 @@ export async function POST(req: Request) {
             return redirectRelative("/clients?toast=invalid+client+data");
         }
 
-        const ownerId = process.env.DEFAULT_OWNER_ID;
+        const ownerId = process.env.DEFAULT_OWNER_ID; // optional; your schema can ignore this
 
         // Build the common fields first
         const base = {
@@ -61,11 +60,9 @@ export async function POST(req: Request) {
         let data: Prisma.ClientUncheckedCreateInput;
 
         if (ownerId) {
-            // Owner required or optional – we provide it explicitly
             data = { ...base, ownerId };
         } else {
-            // No env owner – only valid if your schema makes ownerId optional
-            // (If it is required, Prisma will throw; we’ll catch and show a toast)
+            // Only valid if ownerId is optional in your schema
             data = base as Prisma.ClientUncheckedCreateInput;
         }
 
@@ -79,3 +76,7 @@ export async function POST(req: Request) {
     }
 }
 
+// tiny health check so you can open /api/clients on Render and see "ok"
+export async function GET() {
+    return new Response("ok", { status: 200 });
+}

@@ -1,4 +1,3 @@
-// src/app/clients/page.tsx
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import Button from "@/components/ui/button";
@@ -185,19 +184,14 @@ export default async function ClientsPage({
                 <div>
                   <div className="font-medium">{c.name}</div>
                   <div className="mt-1 flex flex-wrap gap-1.5 text-xs">
-                    {/* Type */}
                     <Chip className="border border-ink-200 bg-ink-50 text-ink-800">
                       {c.clientType}
                     </Chip>
-
-                    {/* Industry */}
                     {c.industry ? (
                       <Chip className="border border-ink-200 bg-ink-50 text-ink-700">
                         {c.industry}
                       </Chip>
                     ) : null}
-
-                    {/* Project count */}
                     <Chip className="border border-brand-200 bg-brand-50 text-brand-700">
                       {c._count.projects} project
                       {c._count.projects === 1 ? "" : "s"}
