@@ -8,36 +8,27 @@ import { ClientType, Prisma } from "@prisma/client";
 const schema = z.object({
     name: z.string().min(2, "Client name is required."),
     clientType: z.nativeEnum(ClientType).default("SMALL_BUSINESS"),
-    industry: z
-        .string()
-        .transform((v) => (v?.trim() ? v.trim() : null))
-        .nullable()
-        .optional(),
-    contactName: z
-        .string()
-        .transform((v) => (v?.trim() ? v.trim() : null))
-        .nullable()
-        .optional(),
-    contactEmail: z
-        .string()
-        .transform((v) => (v?.trim() ? v.trim() : null))
-        .nullable()
-        .optional(),
+    industry: z.string().transform(v => (v?.trim() ? v.trim() : null)).nullable().optional(),
+    contactName: z.string().transform(v => (v?.trim() ? v.trim() : null)).nullable().optional(),
+    contactEmail: z.string().transform(v => (v?.trim() ? v.trim() : null)).nullable().optional(),
 });
 
-function redirectRelative(location: string) {
-    return new NextResponse(null, { status: 303, headers: { Location: location } });
-}
-
-export async function GET() {
-    // Simple health check so you can open /api/clients and see "ok"
-    return new Response("ok", { status: 200 });
+// Always return an **absolute** redirect (more reliable behind proxies like Render)
+function redirectAbsolute(req: Request, pathAndQuery: string) {
+    const origin = new URL(req.url).origin;
+    return NextResponse.redirect(`${origin}${pathAndQuery}`, 303);
 }
 
 export async function POST(req: Request) {
     try {
-        const form = await req.formData();
+        // Ensure we have an owner id on the server (and that you created this row in "User")
+        const ownerId = process.env.DEFAULT_OWNER_ID;
+        if (!ownerId) {
+            console.error("Missing DEFAULT_OWNER_ID env var on server.");
+            return redirectAbsolute(req, "/clients?toast=missing+owner");
+        }
 
+        const form = await req.formData();
         const raw = {
             name: String(form.get("name") ?? ""),
             clientType: (form.get("clientType") as string) || "SMALL_BUSINESS",
@@ -49,12 +40,10 @@ export async function POST(req: Request) {
         const parsed = schema.safeParse(raw);
         if (!parsed.success) {
             console.warn("Invalid client payload:", parsed.error.flatten().fieldErrors);
-            return redirectRelative("/clients?toast=invalid+client+data");
+            return redirectAbsolute(req, "/clients?toast=invalid+client+data");
         }
 
-        const ownerId = process.env.DEFAULT_OWNER_ID || null;
-
-        // Build the common fields first
+        // Build payload (ownerId is required by your schema)
         const base = {
             name: parsed.data.name,
             clientType: parsed.data.clientType,
@@ -63,34 +52,15 @@ export async function POST(req: Request) {
             contactEmail: parsed.data.contactEmail ?? null,
         };
 
-        let data: Prisma.ClientUncheckedCreateInput;
-
-        if (ownerId) {
-            // Only attach ownerId if it actually exists in this DB
-            // Adjust the lookup to match your schema ("User", "Owner", etc.)
-            const owner = await prisma.user
-                .findUnique({ where: { id: ownerId } })
-                .catch(() => null);
-            data = owner ? { ...base, ownerId } : (base as Prisma.ClientUncheckedCreateInput);
-        } else {
-            data = base as Prisma.ClientUncheckedCreateInput;
-        }
+        const data: Prisma.ClientUncheckedCreateInput = { ...base, ownerId };
 
         await prisma.client.create({ data });
 
-        return redirectRelative("/clients?toast=client+created");
+        return redirectAbsolute(req, "/clients?toast=client+created");
     } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
         console.error("Create client failed:", message);
-
-        // If it was a FK error, surface a clearer toast
-        const isFK =
-            typeof message === "string" &&
-            message.toLowerCase().includes("foreign key constraint");
-        if (isFK) {
-            return redirectRelative("/clients?toast=invalid+owner+id");
-        }
-
-        return redirectRelative("/clients?toast=failed+to+create+client");
+        // Common case: FK violation if the owner row doesn't exist
+        return redirectAbsolute(req, "/clients?toast=failed+to+create+client");
     }
 }
