@@ -1,3 +1,4 @@
+// src/app/clients/page.tsx
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import Button from "@/components/ui/button";
@@ -8,7 +9,6 @@ import type { Prisma } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
 
-// Tiny pill chip
 function Chip({
   children,
   className = "",
@@ -25,7 +25,6 @@ function Chip({
   );
 }
 
-// Strongly-typed payload so TS knows `_count` exists.
 type ClientWithCounts = Prisma.ClientGetPayload<{
   include: { _count: { select: { projects: true } } };
 }>;
@@ -38,22 +37,53 @@ export default async function ClientsPage({
   const sp = await searchParams;
   const q = Array.isArray(sp.q) ? sp.q[0] : sp.q ?? "";
 
-  // Optional: map ?toast=... to a message for floating toast
   const toastCode = Array.isArray(sp.toast) ? sp.toast[0] : sp.toast ?? null;
-  const toastMessage =
-    toastCode === "client+created" || toastCode === "created"
-      ? "Client created."
-      : toastCode === "client+deleted" || toastCode === "deleted"
-      ? "Client deleted."
-      : toastCode === "project+created" || toastCode === "project_created"
-      ? "Project created."
-      : toastCode === "submitted"
-      ? "Intake marked as submitted."
-      : toastCode === "reopened"
-      ? "Intake reopened (back to Draft)."
-      : null;
 
-  // Build a Prisma-safe `where`
+  // map ?toast=... to message + variant
+  let toastMessage: string | null = null;
+  let toastVariant: "success" | "error" | "info" = "success";
+
+  switch (toastCode) {
+    case "client+created":
+    case "created":
+      toastMessage = "Client created.";
+      toastVariant = "success";
+      break;
+    case "client+deleted":
+    case "deleted":
+      toastMessage = "Client deleted.";
+      toastVariant = "success";
+      break;
+    case "project+created":
+    case "project_created":
+      toastMessage = "Project created.";
+      toastVariant = "success";
+      break;
+    case "submitted":
+      toastMessage = "Intake marked as submitted.";
+      toastVariant = "success";
+      break;
+    case "reopened":
+      toastMessage = "Intake reopened (back to Draft).";
+      toastVariant = "success";
+      break;
+    case "invalid+client+data":
+      toastMessage = "Invalid client data. Please check the form.";
+      toastVariant = "error";
+      break;
+    case "invalid+owner+id":
+      toastMessage =
+        "Owner ID is invalid in this database. Client not created.";
+      toastVariant = "error";
+      break;
+    case "failed+to+create+client":
+      toastMessage = "Failed to create client. See server logs.";
+      toastVariant = "error";
+      break;
+    default:
+      toastMessage = null;
+  }
+
   let where: Prisma.ClientWhereInput = {};
   if (q.trim().length > 0) {
     where = {
@@ -72,8 +102,7 @@ export default async function ClientsPage({
 
   return (
     <main className="p-8 space-y-8">
-      {/* fire a floating toast on load (if any) */}
-      <FlashToastOnLoad message={toastMessage} variant="success" />
+      <FlashToastOnLoad message={toastMessage} variant={toastVariant} />
 
       {/* New Client */}
       <section className="rounded-2xl border p-6">
@@ -131,6 +160,7 @@ export default async function ClientsPage({
           </div>
 
           <div className="md:col-span-2">
+            {/* Button component already has type="button" by default; here we need submit */}
             <Button type="submit" variant="primary">
               Create client
             </Button>

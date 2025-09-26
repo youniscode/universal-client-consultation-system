@@ -1,3 +1,4 @@
+// src/app/api/clients/route.ts
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
@@ -28,6 +29,11 @@ function redirectRelative(location: string) {
     return new NextResponse(null, { status: 303, headers: { Location: location } });
 }
 
+export async function GET() {
+    // Simple health check so you can open /api/clients and see "ok"
+    return new Response("ok", { status: 200 });
+}
+
 export async function POST(req: Request) {
     try {
         const form = await req.formData();
@@ -46,7 +52,7 @@ export async function POST(req: Request) {
             return redirectRelative("/clients?toast=invalid+client+data");
         }
 
-        const ownerId = process.env.DEFAULT_OWNER_ID; // optional; your schema can ignore this
+        const ownerId = process.env.DEFAULT_OWNER_ID || null;
 
         // Build the common fields first
         const base = {
@@ -60,9 +66,13 @@ export async function POST(req: Request) {
         let data: Prisma.ClientUncheckedCreateInput;
 
         if (ownerId) {
-            data = { ...base, ownerId };
+            // Only attach ownerId if it actually exists in this DB
+            // Adjust the lookup to match your schema ("User", "Owner", etc.)
+            const owner = await prisma.user
+                .findUnique({ where: { id: ownerId } })
+                .catch(() => null);
+            data = owner ? { ...base, ownerId } : (base as Prisma.ClientUncheckedCreateInput);
         } else {
-            // Only valid if ownerId is optional in your schema
             data = base as Prisma.ClientUncheckedCreateInput;
         }
 
@@ -72,11 +82,15 @@ export async function POST(req: Request) {
     } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
         console.error("Create client failed:", message);
+
+        // If it was a FK error, surface a clearer toast
+        const isFK =
+            typeof message === "string" &&
+            message.toLowerCase().includes("foreign key constraint");
+        if (isFK) {
+            return redirectRelative("/clients?toast=invalid+owner+id");
+        }
+
         return redirectRelative("/clients?toast=failed+to+create+client");
     }
-}
-
-// tiny health check so you can open /api/clients on Render and see "ok"
-export async function GET() {
-    return new Response("ok", { status: 200 });
 }
