@@ -1,22 +1,18 @@
-// src/app/api/clients/route.ts
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { ClientType, Prisma } from "@prisma/client";
 
-// Build absolute redirect that works in Render
-function redirectAbsolute(req: Request, path: string) {
-    const xfProto = req.headers.get("x-forwarded-proto"); // https
-    const xfHost = req.headers.get("x-forwarded-host");   // your render.com domain
-    const host = xfHost ?? req.headers.get("host") ?? process.env.PUBLIC_ORIGIN ?? "localhost:3000";
-    const proto = xfProto ?? (host.startsWith("localhost") ? "http" : "https");
-    const origin = host.startsWith("http") ? host : `${proto}://${host}`;
-    const url = new URL(path.startsWith("/") ? path : `/${path}`, origin);
+// Build an absolute URL from the incoming request (works on Render)
+function redirectAbsolute(req: Request, location: string) {
+    const url = new URL(req.url);
+    url.pathname = location.split("?")[0];
+    url.search = location.includes("?") ? location.split("?")[1] : "";
     return NextResponse.redirect(url, 303);
 }
 
 const schema = z.object({
-    name: z.string().min(2, "Client name is required."),
+    name: z.string().min(2),
     clientType: z.nativeEnum(ClientType).default("SMALL_BUSINESS"),
     industry: z.string().transform(v => (v?.trim() ? v.trim() : null)).nullable().optional(),
     contactName: z.string().transform(v => (v?.trim() ? v.trim() : null)).nullable().optional(),
@@ -41,7 +37,7 @@ export async function POST(req: Request) {
             return redirectAbsolute(req, "/clients?toast=invalid+client+data");
         }
 
-        const ownerId = process.env.DEFAULT_OWNER_ID;
+        const ownerId = process.env.DEFAULT_OWNER_ID; // optional
 
         const base = {
             name: parsed.data.name,
@@ -51,7 +47,6 @@ export async function POST(req: Request) {
             contactEmail: parsed.data.contactEmail ?? null,
         };
 
-        // Use const here (no reassignment needed)
         const data: Prisma.ClientUncheckedCreateInput = ownerId
             ? { ...base, ownerId }
             : (base as Prisma.ClientUncheckedCreateInput);
@@ -59,7 +54,7 @@ export async function POST(req: Request) {
         await prisma.client.create({ data });
 
         return redirectAbsolute(req, "/clients?toast=client+created");
-    } catch (err) {
+    } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
         console.error("Create client failed:", message);
         return redirectAbsolute(req, "/clients?toast=failed+to+create+client");
