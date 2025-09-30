@@ -6,6 +6,7 @@ import DeleteClient from "@/components/ui/DeleteClient";
 import EmptyState from "@/components/ui/empty-state";
 import { FlashToastOnLoad } from "@/components/ui/toast";
 import type { Prisma } from "@prisma/client";
+import { createClientAction } from "@/actions/clients";
 
 export const dynamic = "force-dynamic";
 
@@ -34,11 +35,9 @@ type ClientWithCounts = Prisma.ClientGetPayload<{
 export default async function ClientsPage({
   searchParams,
 }: {
-  // Next 15+: searchParams is a Promise in RSC
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const sp = await searchParams;
-
   const q = Array.isArray(sp.q) ? sp.q[0] : sp.q ?? "";
 
   // Optional: map ?toast=... to a message for floating toast
@@ -78,12 +77,11 @@ export default async function ClientsPage({
       {/* fire a floating toast on load (if any) */}
       <FlashToastOnLoad message={toastMessage} variant="success" />
 
-      {/* New Client */}
+      {/* New Client (uses Server Action instead of API route) */}
       <section className="rounded-2xl border p-6">
         <h2 className="text-lg font-medium">New Client</h2>
         <form
-          action="/api/clients"
-          method="post"
+          action={createClientAction}
           className="mt-4 grid gap-4 md:grid-cols-2"
         >
           <div className="space-y-2">
