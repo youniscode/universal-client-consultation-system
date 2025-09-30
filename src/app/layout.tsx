@@ -1,4 +1,3 @@
-// src/app/layout.tsx
 import type { Metadata } from "next";
 import "./globals.css";
 import AppShell from "@/components/ui/AppShell";
@@ -9,7 +8,6 @@ export const metadata: Metadata = {
   description: "Universal Client Consultation System",
 };
 
-
 export default function RootLayout({
   children,
 }: {
@@ -19,7 +17,7 @@ export default function RootLayout({
     <html lang="en">
       <body className="bg-ink-50/60 text-ink-900 antialiased">
         <AppShell>{children}</AppShell>
-        {/* Floating toast stack (safe in layout) */}
+        {/* Floating toast stack */}
         <Toaster />
       </body>
     </html>

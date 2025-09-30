@@ -1,15 +1,14 @@
-// src/app/api/clients/route.ts
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { ClientType, Prisma } from "@prisma/client";
 
-// Small helper: always redirect RELATIVE so Render doesn't invent 0.0.0.0
+/** Relative redirect: keeps the Render host (avoids 0.0.0.0). */
 function redirectRelative(path: string) {
     return new NextResponse(null, { status: 303, headers: { Location: path } });
 }
 
-// Normalize empty strings to null for nullable optionals
+/** Coerce empty strings to null for nullable columns */
 const nullableString = z
     .string()
     .transform((v) => {
@@ -32,7 +31,6 @@ export async function POST(req: Request) {
         console.log(`${LOG} begin`);
 
         const form = await req.formData();
-        // Raw strings from the form (avoid 'as string' surprises)
         const raw = {
             name: String(form.get("name") ?? ""),
             clientType: String(form.get("clientType") ?? "SMALL_BUSINESS"),
@@ -40,19 +38,18 @@ export async function POST(req: Request) {
             contactName: String(form.get("contactName") ?? ""),
             contactEmail: String(form.get("contactEmail") ?? ""),
         };
-
         console.log(`${LOG} raw`, raw);
 
         const parsed = schema.safeParse(raw);
         if (!parsed.success) {
-            console.warn(
-                `${LOG} invalid payload`,
-                parsed.error.flatten().fieldErrors
-            );
+            console.warn(`${LOG} invalid payload`, parsed.error.flatten().fieldErrors);
             return redirectRelative("/clients?toast=invalid+client+data");
         }
 
-        const dataCommon = {
+        // If your Prisma schema requires an ownerId (NOT NULL),
+        // you must provide DEFAULT_OWNER_ID in Render env.
+        const ownerId = process.env.DEFAULT_OWNER_ID?.trim();
+        const common = {
             name: parsed.data.name,
             clientType: parsed.data.clientType,
             industry: parsed.data.industry ?? null,
@@ -60,26 +57,37 @@ export async function POST(req: Request) {
             contactEmail: parsed.data.contactEmail ?? null,
         };
 
-        const ownerId = process.env.DEFAULT_OWNER_ID;
         let data: Prisma.ClientUncheckedCreateInput;
 
-        if (ownerId && ownerId.trim().length > 0) {
-            data = { ...dataCommon, ownerId };
+        if (ownerId && ownerId.length > 0) {
+            data = { ...common, ownerId };
             console.log(`${LOG} using ownerId from env`, ownerId);
         } else {
-            // ownerId optional in your schema => this is fine
-            data = dataCommon as Prisma.ClientUncheckedCreateInput;
+            // If your schema has "ownerId String?", this is fine.
+            // If it's required in your schema, Prisma will throw and we’ll show a toast.
+            data = common as Prisma.ClientUncheckedCreateInput;
             console.log(`${LOG} no ownerId in env (assuming optional in schema)`);
         }
 
-        console.log(`${LOG} creating client`, data);
+        console.log(`${LOG} creating client`, { ...data, contactEmail: !!data.contactEmail ? "set" : null });
         await prisma.client.create({ data });
 
         console.log(`${LOG} success -> redirect`);
         return redirectRelative("/clients?toast=client+created");
-    } catch (err) {
+    } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
         console.error(`${LOG} failed`, message);
+
+        // If foreign key fails, make it obvious
+        if (/Foreign key constraint/i.test(message)) {
+            return redirectRelative("/clients?toast=owner_not_found");
+        }
+
+        // If owner is missing yet required
+        if (/Null constraint failed.*ownerId/i.test(message)) {
+            return redirectRelative("/clients?toast=config_error");
+        }
+
         return redirectRelative("/clients?toast=failed+to+create+client");
     }
 }

@@ -15,9 +15,8 @@ export default function Button({
   size = "md",
   disabled,
   loading,
-  // IMPORTANT: do NOT default `type` here; let callers pass "submit" etc.
-  type,
   children,
+  type = "button",
   ...props
 }: ButtonProps) {
   const sizes: Record<NonNullable<ButtonProps["size"]>, string> = {

@@ -1,4 +1,3 @@
-// src/components/ui/toast.tsx
 "use client";
 
 import * as React from "react";
@@ -23,11 +22,7 @@ function variantClasses(variant: ToastItem["variant"]) {
   }
 }
 
-/**
- * Toaster
- * Renders a small toast stack bottom-right.
- * Dispatch with: window.dispatchEvent(new CustomEvent('toast', { detail: { title, description, variant, duration } }))
- */
+/** Toaster: listens for `window.dispatchEvent(new CustomEvent('toast', { detail }))` */
 export default function Toaster() {
   const [toasts, setToasts] = React.useState<ToastItem[]>([]);
   const [mounted, setMounted] = React.useState(false);
@@ -47,7 +42,6 @@ export default function Toaster() {
       };
       setToasts((prev) => [...prev, item]);
 
-      // auto-remove
       window.setTimeout(() => {
         setToasts((prev) => prev.filter((t) => t.id !== id));
       }, item.duration);
@@ -83,27 +77,22 @@ export default function Toaster() {
   );
 }
 
-/** Programmatic helper */
 export function toast(detail: Omit<ToastItem, "id">) {
   if (typeof window === "undefined") return;
   window.dispatchEvent(new CustomEvent("toast", { detail }));
 }
 
-/** Fire a toast on initial render (handy for ?toast=... flows) */
+/** Show a toast once on mount if `message` provided (server → client bridge) */
 export function FlashToastOnLoad({
   message,
   variant = "success",
-  description,
-  duration = 2600,
 }: {
   message?: string | null;
   variant?: ToastItem["variant"];
-  description?: string;
-  duration?: number;
 }) {
   React.useEffect(() => {
     if (!message) return;
-    toast({ title: message, description, variant, duration });
-  }, [message, description, variant, duration]);
+    toast({ title: message, variant, duration: 2600 });
+  }, [message, variant]);
   return null;
 }
