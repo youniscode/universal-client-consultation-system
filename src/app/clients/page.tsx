@@ -1,3 +1,4 @@
+// src/app/clients/page.tsx
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import Button from "@/components/ui/button";
@@ -33,12 +34,14 @@ type ClientWithCounts = Prisma.ClientGetPayload<{
 export default async function ClientsPage({
   searchParams,
 }: {
-  searchParams?: Record<string, string | string[] | undefined>;
+  // Next 15+: searchParams is a Promise in RSC
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const sp = searchParams ?? {};
+  const sp = await searchParams;
+
   const q = Array.isArray(sp.q) ? sp.q[0] : sp.q ?? "";
 
-  // Map ?toast=... to a message for floating toast
+  // Optional: map ?toast=... to a message for floating toast
   const toastCode = Array.isArray(sp.toast) ? sp.toast[0] : sp.toast ?? null;
   const toastMessage =
     toastCode === "client+created" || toastCode === "created"
@@ -51,14 +54,6 @@ export default async function ClientsPage({
       ? "Intake marked as submitted."
       : toastCode === "reopened"
       ? "Intake reopened (back to Draft)."
-      : toastCode === "invalid+client+data"
-      ? "Invalid client data."
-      : toastCode === "failed+to+create+client"
-      ? "Failed to create client."
-      : toastCode === "config_error"
-      ? "Server misconfigured: DEFAULT_OWNER_ID missing or ownerId required."
-      : toastCode === "owner_not_found"
-      ? "Owner in DEFAULT_OWNER_ID not found in database."
       : null;
 
   // Build a Prisma-safe `where`
@@ -192,14 +187,19 @@ export default async function ClientsPage({
                 <div>
                   <div className="font-medium">{c.name}</div>
                   <div className="mt-1 flex flex-wrap gap-1.5 text-xs">
+                    {/* Type */}
                     <Chip className="border border-ink-200 bg-ink-50 text-ink-800">
                       {c.clientType}
                     </Chip>
+
+                    {/* Industry */}
                     {c.industry ? (
                       <Chip className="border border-ink-200 bg-ink-50 text-ink-700">
                         {c.industry}
                       </Chip>
                     ) : null}
+
+                    {/* Project count */}
                     <Chip className="border border-brand-200 bg-brand-50 text-brand-700">
                       {c._count.projects} project
                       {c._count.projects === 1 ? "" : "s"}
