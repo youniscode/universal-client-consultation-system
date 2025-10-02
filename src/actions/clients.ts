@@ -1,78 +1,98 @@
-// src/actions/clients.ts
 "use server";
 
 import { prisma } from "@/lib/db";
-import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
+import { Prisma, ClientType } from "@prisma/client";
 import { z } from "zod";
-import { ClientType, Prisma } from "@prisma/client";
+import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 
+/** Zod schema mirrors Prisma create input (optionals -> nullable) */
 const schema = z.object({
     name: z.string().min(2, "Client name is required."),
     clientType: z.nativeEnum(ClientType).default("SMALL_BUSINESS"),
-    industry: z.string().trim().optional().nullable(),
-    contactName: z.string().trim().optional().nullable(),
-    contactEmail: z.string().trim().email("Invalid email").optional().nullable(),
+    industry: z
+        .string()
+        .transform((v) => (v?.trim() ? v.trim() : null))
+        .nullable()
+        .optional(),
+    contactName: z
+        .string()
+        .transform((v) => (v?.trim() ? v.trim() : null))
+        .nullable()
+        .optional(),
+    contactEmail: z
+        .string()
+        .transform((v) => (v?.trim() ? v.trim() : null))
+        .nullable()
+        .optional(),
 });
 
 export async function createClientAction(formData: FormData) {
+    // raw values from form
     const raw = {
         name: String(formData.get("name") ?? ""),
         clientType: (formData.get("clientType") as string) || "SMALL_BUSINESS",
-        industry: (formData.get("industry") as string | null) ?? null,
-        contactName: (formData.get("contactName") as string | null) ?? null,
-        contactEmail: (formData.get("contactEmail") as string | null) ?? null,
+        industry: (formData.get("industry") as string) ?? "",
+        contactName: (formData.get("contactName") as string) ?? "",
+        contactEmail: (formData.get("contactEmail") as string) ?? "",
     };
 
+    // validate payload
     const parsed = schema.safeParse(raw);
     if (!parsed.success) {
         return redirect("/clients?toast=invalid+client+data");
     }
 
-    // ✅ OWNER IS REQUIRED (fixes the red error)
+    // REQUIRED owner id (because your Prisma model requires the relation)
     const ownerId = process.env.DEFAULT_OWNER_ID;
     if (!ownerId) {
-        console.error("Missing DEFAULT_OWNER_ID env var — cannot create Client.");
-        return redirect("/clients?toast=failed+to+create+client");
+        console.error(
+            "[createClientAction] DEFAULT_OWNER_ID is missing. Set it in Render → Environment."
+        );
+        return redirect("/clients?toast=missing+owner+id");
     }
 
-    // All optionals coerced to null (never undefined) + required ownerId set
-    const data: Prisma.ClientUncheckedCreateInput = {
-        ownerId, // required
+    // Build a CHECKED Prisma input including the relation connect
+    const data: Prisma.ClientCreateInput = {
         name: parsed.data.name,
         clientType: parsed.data.clientType,
         industry: parsed.data.industry ?? null,
         contactName: parsed.data.contactName ?? null,
         contactEmail: parsed.data.contactEmail ?? null,
+        owner: { connect: { id: ownerId } }, // <-- relation is required
     };
 
     try {
         await prisma.client.create({ data });
-        return redirect("/clients?toast=client+created");
     } catch (err) {
-        console.error("Create client failed:", err);
+        console.error("[createClientAction] failed:", err);
         return redirect("/clients?toast=failed+to+create+client");
     }
-}
-
-/**
- * Delete a client and all of its related data, then bounce back with a toast.
- * Expects a FormData field called "clientId".
- */
-export async function deleteClient(formData: FormData) {
-    const clientId = String(formData.get("clientId") ?? "");
-    if (!clientId) {
-        redirect("/clients?toast=invalid+client+id");
-    }
-
-    // delete related rows first (answers/proposals via projects), then projects, then client
-    await prisma.$transaction([
-        prisma.answer.deleteMany({ where: { project: { clientId } } }),
-        prisma.proposal.deleteMany({ where: { project: { clientId } } }),
-        prisma.project.deleteMany({ where: { clientId } }),
-        prisma.client.delete({ where: { id: clientId } }),
-    ]);
 
     revalidatePath("/clients");
-    redirect("/clients?toast=client+deleted");
+    return redirect("/clients?toast=client+created");
+}
+
+export async function deleteClient(formData: FormData) {
+    const clientId = String(formData.get("clientId") ?? "");
+    if (!clientId) return redirect("/clients?toast=invalid+client+data");
+
+    try {
+        await prisma.$transaction(async (trx) => {
+            await trx.answer
+                .deleteMany({ where: { project: { clientId } } })
+                .catch(() => { });
+            await trx.proposal
+                .deleteMany({ where: { project: { clientId } } })
+                .catch(() => { });
+            await trx.project.deleteMany({ where: { clientId } }).catch(() => { });
+            await trx.client.delete({ where: { id: clientId } });
+        });
+    } catch (err) {
+        console.error("[deleteClient] failed:", err);
+        return redirect("/clients?toast=failed+to+delete+client");
+    }
+
+    revalidatePath("/clients");
+    return redirect("/clients?toast=client+deleted");
 }

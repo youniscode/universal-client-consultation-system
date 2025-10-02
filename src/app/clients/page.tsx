@@ -1,16 +1,15 @@
-// src/app/clients/page.tsx
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import Button from "@/components/ui/button";
 import DeleteClient from "@/components/ui/DeleteClient";
 import EmptyState from "@/components/ui/empty-state";
 import { FlashToastOnLoad } from "@/components/ui/toast";
-import type { Prisma } from "@prisma/client";
+import type { Prisma as PrismaTypes } from "@prisma/client";
 import { createClientAction } from "@/actions/clients";
 
 export const dynamic = "force-dynamic";
 
-// Tiny pill chip
+// tiny pill
 function Chip({
   children,
   className = "",
@@ -27,20 +26,20 @@ function Chip({
   );
 }
 
-// Strongly-typed payload so TS knows `_count` exists.
-type ClientWithCounts = Prisma.ClientGetPayload<{
+// strongly typed so `_count` exists
+type ClientWithCounts = PrismaTypes.ClientGetPayload<{
   include: { _count: { select: { projects: true } } };
 }>;
 
 export default async function ClientsPage({
   searchParams,
 }: {
-  searchParams: Promise<Record<string, string | string[] | undefined>>;
+  // Next 13/14/15 app router gives a plain object (not Promise)
+  searchParams?: Record<string, string | string[] | undefined>;
 }) {
-  const sp = await searchParams;
+  const sp = searchParams ?? {};
   const q = Array.isArray(sp.q) ? sp.q[0] : sp.q ?? "";
 
-  // Optional: map ?toast=... to a message for floating toast
   const toastCode = Array.isArray(sp.toast) ? sp.toast[0] : sp.toast ?? null;
   const toastMessage =
     toastCode === "client+created" || toastCode === "created"
@@ -55,8 +54,8 @@ export default async function ClientsPage({
       ? "Intake reopened (back to Draft)."
       : null;
 
-  // Build a Prisma-safe `where`
-  let where: Prisma.ClientWhereInput = {};
+  // Prisma-safe where
+  let where: PrismaTypes.ClientWhereInput = {};
   if (q.trim().length > 0) {
     where = {
       OR: [
@@ -74,10 +73,9 @@ export default async function ClientsPage({
 
   return (
     <main className="p-8 space-y-8">
-      {/* fire a floating toast on load (if any) */}
-      <FlashToastOnLoad message={toastMessage} variant="success" />
+      <FlashToastOnLoad message={toastMessage ?? undefined} variant="success" />
 
-      {/* New Client (uses Server Action instead of API route) */}
+      {/* New Client (Server Action) */}
       <section className="rounded-2xl border p-6">
         <h2 className="text-lg font-medium">New Client</h2>
         <form
@@ -144,7 +142,6 @@ export default async function ClientsPage({
         <div className="flex items-end justify-between">
           <h2 className="text-lg font-medium">All Clients</h2>
 
-          {/* Search bar */}
           <form method="get" className="flex gap-2">
             <input
               name="q"
@@ -185,19 +182,14 @@ export default async function ClientsPage({
                 <div>
                   <div className="font-medium">{c.name}</div>
                   <div className="mt-1 flex flex-wrap gap-1.5 text-xs">
-                    {/* Type */}
                     <Chip className="border border-ink-200 bg-ink-50 text-ink-800">
                       {c.clientType}
                     </Chip>
-
-                    {/* Industry */}
                     {c.industry ? (
                       <Chip className="border border-ink-200 bg-ink-50 text-ink-700">
                         {c.industry}
                       </Chip>
                     ) : null}
-
-                    {/* Project count */}
                     <Chip className="border border-brand-200 bg-brand-50 text-brand-700">
                       {c._count.projects} project
                       {c._count.projects === 1 ? "" : "s"}
