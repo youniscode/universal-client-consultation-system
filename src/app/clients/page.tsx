@@ -32,13 +32,21 @@ type ClientWithCounts = Prisma.ClientGetPayload<{
   include: { _count: { select: { projects: true } } };
 }>;
 
-// ✅ Next 13.4+/15 passes `searchParams` as a plain object, not a Promise.
+// Accept both shapes (Render sometimes generates Promise-based PageProps)
 type PageProps = {
-  searchParams?: Record<string, string | string[] | undefined>;
+  searchParams?:
+    | Record<string, string | string[] | undefined>
+    | Promise<Record<string, string | string[] | undefined>>;
 };
 
 export default async function ClientsPage({ searchParams }: PageProps) {
-  const sp = searchParams ?? {};
+  // Normalize searchParams to a plain object
+  const sp =
+    (await (searchParams as
+      | Promise<Record<string, string | string[] | undefined>>
+      | Record<string, string | string[] | undefined>
+      | undefined)) ?? {};
+
   const q = Array.isArray(sp.q) ? sp.q[0] : sp.q ?? "";
 
   // Optional: map ?toast=... to a message for floating toast
