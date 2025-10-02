@@ -2,6 +2,7 @@
 "use server";
 
 import { prisma } from "@/lib/db";
+import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { ClientType, Prisma } from "@prisma/client";
@@ -52,4 +53,26 @@ export async function createClientAction(formData: FormData) {
         console.error("Create client failed:", err);
         return redirect("/clients?toast=failed+to+create+client");
     }
+}
+
+/**
+ * Delete a client and all of its related data, then bounce back with a toast.
+ * Expects a FormData field called "clientId".
+ */
+export async function deleteClient(formData: FormData) {
+    const clientId = String(formData.get("clientId") ?? "");
+    if (!clientId) {
+        redirect("/clients?toast=invalid+client+id");
+    }
+
+    // delete related rows first (answers/proposals via projects), then projects, then client
+    await prisma.$transaction([
+        prisma.answer.deleteMany({ where: { project: { clientId } } }),
+        prisma.proposal.deleteMany({ where: { project: { clientId } } }),
+        prisma.project.deleteMany({ where: { clientId } }),
+        prisma.client.delete({ where: { id: clientId } }),
+    ]);
+
+    revalidatePath("/clients");
+    redirect("/clients?toast=client+deleted");
 }
