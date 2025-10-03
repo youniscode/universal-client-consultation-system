@@ -32,21 +32,13 @@ type ClientWithCounts = Prisma.ClientGetPayload<{
   include: { _count: { select: { projects: true } } };
 }>;
 
-// Accept both shapes (Render sometimes generates Promise-based PageProps)
+// 🔧 Match Render/Next’s generated types: searchParams is a Promise here.
 type PageProps = {
-  searchParams?:
-    | Record<string, string | string[] | undefined>
-    | Promise<Record<string, string | string[] | undefined>>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
 
 export default async function ClientsPage({ searchParams }: PageProps) {
-  // Normalize searchParams to a plain object
-  const sp =
-    (await (searchParams as
-      | Promise<Record<string, string | string[] | undefined>>
-      | Record<string, string | string[] | undefined>
-      | undefined)) ?? {};
-
+  const sp = await searchParams;
   const q = Array.isArray(sp.q) ? sp.q[0] : sp.q ?? "";
 
   // Optional: map ?toast=... to a message for floating toast
@@ -86,7 +78,7 @@ export default async function ClientsPage({ searchParams }: PageProps) {
       {/* fire a floating toast on load (if any) */}
       <FlashToastOnLoad message={toastMessage} variant="success" />
 
-      {/* New Client (uses Server Action instead of API route) */}
+      {/* New Client (Server Action) */}
       <section className="rounded-2xl border p-6">
         <h2 className="text-lg font-medium">New Client</h2>
         <form
@@ -194,19 +186,14 @@ export default async function ClientsPage({ searchParams }: PageProps) {
                 <div>
                   <div className="font-medium">{c.name}</div>
                   <div className="mt-1 flex flex-wrap gap-1.5 text-xs">
-                    {/* Type */}
                     <Chip className="border border-ink-200 bg-ink-50 text-ink-800">
                       {c.clientType}
                     </Chip>
-
-                    {/* Industry */}
                     {c.industry ? (
                       <Chip className="border border-ink-200 bg-ink-50 text-ink-700">
                         {c.industry}
                       </Chip>
                     ) : null}
-
-                    {/* Project count */}
                     <Chip className="border border-brand-200 bg-brand-50 text-brand-700">
                       {c._count.projects} project
                       {c._count.projects === 1 ? "" : "s"}
