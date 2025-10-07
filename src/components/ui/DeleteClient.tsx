@@ -2,7 +2,7 @@
 "use client";
 
 import Button from "@/components/ui/button";
-import { deleteClient } from "@/actions/clients";
+import { deleteClientAction } from "@/actions/clients";
 
 type Props = {
   clientId: string;
@@ -15,7 +15,7 @@ type Props = {
 export default function DeleteClient({ clientId, className }: Props) {
   return (
     <form
-      action={deleteClient}
+      action={deleteClientAction}
       onSubmit={(e) => {
         if (
           !confirm(

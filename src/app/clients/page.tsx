@@ -27,12 +27,11 @@ function Chip({
   );
 }
 
-// Strongly-typed payload so TS knows `_count` exists.
 type ClientWithCounts = Prisma.ClientGetPayload<{
   include: { _count: { select: { projects: true } } };
 }>;
 
-// 🔧 Match Render/Next’s generated types: searchParams is a Promise here.
+// Render’s generated type uses a Promise for searchParams
 type PageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
@@ -41,7 +40,6 @@ export default async function ClientsPage({ searchParams }: PageProps) {
   const sp = await searchParams;
   const q = Array.isArray(sp.q) ? sp.q[0] : sp.q ?? "";
 
-  // Optional: map ?toast=... to a message for floating toast
   const toastCode = Array.isArray(sp.toast) ? sp.toast[0] : sp.toast ?? null;
   const toastMessage =
     toastCode === "client+created" || toastCode === "created"
@@ -54,9 +52,10 @@ export default async function ClientsPage({ searchParams }: PageProps) {
       ? "Intake marked as submitted."
       : toastCode === "reopened"
       ? "Intake reopened (back to Draft)."
+      : toastCode?.includes("failed")
+      ? "Action failed."
       : null;
 
-  // Build a Prisma-safe `where`
   let where: Prisma.ClientWhereInput = {};
   if (q.trim().length > 0) {
     where = {
@@ -75,8 +74,10 @@ export default async function ClientsPage({ searchParams }: PageProps) {
 
   return (
     <main className="p-8 space-y-8">
-      {/* fire a floating toast on load (if any) */}
-      <FlashToastOnLoad message={toastMessage} variant="success" />
+      <FlashToastOnLoad
+        message={toastMessage}
+        variant={toastMessage?.includes("failed") ? "error" : "success"}
+      />
 
       {/* New Client (Server Action) */}
       <section className="rounded-2xl border p-6">
