@@ -1,4 +1,3 @@
-// src/app/clients/page.tsx
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import Button from "@/components/ui/button";
@@ -31,33 +30,35 @@ type ClientWithCounts = Prisma.ClientGetPayload<{
   include: { _count: { select: { projects: true } } };
 }>;
 
-// Render’s generated type uses a Promise for searchParams
 type PageProps = {
-  searchParams: Promise<Record<string, string | string[] | undefined>>;
+  searchParams?: Record<string, string | string[] | undefined>;
 };
 
 export default async function ClientsPage({ searchParams }: PageProps) {
-  const sp = await searchParams;
+  const sp = searchParams ?? {};
   const q = Array.isArray(sp.q) ? sp.q[0] : sp.q ?? "";
 
   const toastCode = Array.isArray(sp.toast) ? sp.toast[0] : sp.toast ?? null;
   const toastMessage =
-    toastCode === "client+created" || toastCode === "created"
+    toastCode === "Client+created" || toastCode === "created"
       ? "Client created."
-      : toastCode === "client+deleted" || toastCode === "deleted"
+      : toastCode === "Client+deleted" || toastCode === "deleted"
       ? "Client deleted."
-      : toastCode === "project+created" || toastCode === "project_created"
-      ? "Project created."
-      : toastCode === "submitted"
-      ? "Intake marked as submitted."
-      : toastCode === "reopened"
-      ? "Intake reopened (back to Draft)."
-      : toastCode?.includes("failed")
-      ? "Action failed."
+      : toastCode === "Action+failed"
+      ? "Action failed"
       : null;
 
+  // Map to FlashToastOnLoad variant union
+  const toastVariant: "success" | "error" | "info" | undefined =
+    toastMessage?.includes("failed")
+      ? "error"
+      : toastMessage
+      ? "success"
+      : undefined;
+
+  // Build where safely
   let where: Prisma.ClientWhereInput = {};
-  if (q.trim().length > 0) {
+  if (q.trim()) {
     where = {
       OR: [
         { name: { contains: q, mode: "insensitive" } },
@@ -75,11 +76,11 @@ export default async function ClientsPage({ searchParams }: PageProps) {
   return (
     <main className="p-8 space-y-8">
       <FlashToastOnLoad
-        message={toastMessage}
-        variant={toastMessage?.includes("failed") ? "error" : "success"}
+        message={toastMessage ?? undefined}
+        variant={toastVariant}
       />
 
-      {/* New Client (Server Action) */}
+      {/* New Client */}
       <section className="rounded-2xl border p-6">
         <h2 className="text-lg font-medium">New Client</h2>
         <form

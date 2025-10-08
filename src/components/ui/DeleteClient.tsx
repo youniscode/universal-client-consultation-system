@@ -1,4 +1,3 @@
-// src/components/ui/DeleteClient.tsx
 "use client";
 
 import Button from "@/components/ui/button";
@@ -9,10 +8,8 @@ type Props = {
   className?: string;
 };
 
-/**
- * Client-side wrapper so we can show a confirm() before calling the server action.
- */
-export default function DeleteClient({ clientId, className }: Props) {
+// Client-side wrapper so we can show confirm() before calling the server action.
+export default function DeleteClient({ clientId, className = "" }: Props) {
   return (
     <form
       action={deleteClientAction}
