@@ -1,4 +1,3 @@
-// src/app/clients/page.tsx
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import Button from "@/components/ui/button";
@@ -10,7 +9,6 @@ import { createClientAction } from "@/actions/clients";
 
 export const dynamic = "force-dynamic";
 
-// Chip
 function Chip({
   children,
   className = "",
@@ -31,13 +29,13 @@ type ClientWithCounts = Prisma.ClientGetPayload<{
   include: { _count: { select: { projects: true } } };
 }>;
 
-// ✅ Match Next.js route types on Render exactly: Promise-based searchParams
-type SearchParams = Record<string, string | string[] | undefined>;
-type PageProps = { searchParams?: Promise<SearchParams> };
+// Keep the prop shape loose and normalize inside (avoids Next’s PageProps mismatch).
+type PageProps = {
+  searchParams?: Record<string, string | string[] | undefined>;
+};
 
 export default async function ClientsPage({ searchParams }: PageProps) {
-  // Normalize promise to a plain object
-  const sp: SearchParams = (await searchParams) ?? {};
+  const sp = searchParams ?? {};
   const q = Array.isArray(sp.q) ? sp.q[0] : sp.q ?? "";
 
   const toastCode = Array.isArray(sp.toast) ? sp.toast[0] : sp.toast ?? null;
@@ -52,11 +50,12 @@ export default async function ClientsPage({ searchParams }: PageProps) {
       ? "Intake marked as submitted."
       : toastCode === "reopened"
       ? "Intake reopened (back to Draft)."
+      : toastCode?.startsWith("action") // for “action failed”
+      ? toastCode.replace(/_/g, " ")
       : null;
 
-  // Build a Prisma-safe `where`
   let where: Prisma.ClientWhereInput = {};
-  if (q.trim().length > 0) {
+  if (q.trim()) {
     where = {
       OR: [
         { name: { contains: q, mode: "insensitive" } },
@@ -73,9 +72,13 @@ export default async function ClientsPage({ searchParams }: PageProps) {
 
   return (
     <main className="p-8 space-y-8">
-      <FlashToastOnLoad message={toastMessage} variant="success" />
+      <FlashToastOnLoad
+        message={toastMessage}
+        variant={
+          toastMessage?.toLowerCase().includes("failed") ? "error" : "success"
+        }
+      />
 
-      {/* New Client (server action) */}
       <section className="rounded-2xl border p-6">
         <h2 className="text-lg font-medium">New Client</h2>
         <form
@@ -137,10 +140,10 @@ export default async function ClientsPage({ searchParams }: PageProps) {
         </form>
       </section>
 
-      {/* All Clients */}
       <section className="rounded-2xl border p-6 space-y-4">
         <div className="flex items-end justify-between">
           <h2 className="text-lg font-medium">All Clients</h2>
+
           <form method="get" className="flex gap-2">
             <input
               name="q"

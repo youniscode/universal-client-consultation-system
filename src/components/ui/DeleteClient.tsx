@@ -8,7 +8,7 @@ type Props = {
   className?: string;
 };
 
-// Client-side wrapper so we can show confirm() before calling the server action.
+// Client-side wrapper so we can confirm() before calling the server action.
 export default function DeleteClient({ clientId, className = "" }: Props) {
   return (
     <form
