@@ -1,3 +1,4 @@
+// src/app/clients/page.tsx
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import Button from "@/components/ui/button";
@@ -5,7 +6,6 @@ import DeleteClient from "@/components/ui/DeleteClient";
 import EmptyState from "@/components/ui/empty-state";
 import { FlashToastOnLoad } from "@/components/ui/toast";
 import type { Prisma } from "@prisma/client";
-import { createClientAction } from "@/actions/clients";
 
 export const dynamic = "force-dynamic";
 
@@ -30,35 +30,51 @@ type ClientWithCounts = Prisma.ClientGetPayload<{
   include: { _count: { select: { projects: true } } };
 }>;
 
-type PageProps = {
-  searchParams?: Record<string, string | string[] | undefined>;
-};
+// ---- Types that avoid `any` and work with Render’s Promise searchParams
+type SearchParams = Record<string, string | string[] | undefined>;
+type PageProps = { searchParams?: SearchParams | Promise<SearchParams> };
 
 export default async function ClientsPage({ searchParams }: PageProps) {
-  const sp = searchParams ?? {};
+  // Normalize: accept a Promise or a plain object
+  let sp: SearchParams = {};
+  if (searchParams) {
+    const maybePromise = searchParams as Promise<SearchParams> | SearchParams;
+    if (typeof (maybePromise as Promise<SearchParams>).then === "function") {
+      sp = await (maybePromise as Promise<SearchParams>);
+    } else {
+      sp = maybePromise as SearchParams;
+    }
+  }
+
   const q = Array.isArray(sp.q) ? sp.q[0] : sp.q ?? "";
 
+  // Toast mapping
   const toastCode = Array.isArray(sp.toast) ? sp.toast[0] : sp.toast ?? null;
   const toastMessage =
-    toastCode === "Client+created" || toastCode === "created"
+    toastCode === "client+created" || toastCode === "created"
       ? "Client created."
-      : toastCode === "Client+deleted" || toastCode === "deleted"
+      : toastCode === "client+deleted" || toastCode === "deleted"
       ? "Client deleted."
-      : toastCode === "Action+failed"
-      ? "Action failed"
+      : toastCode === "project+created" || toastCode === "project_created"
+      ? "Project created."
+      : toastCode === "submitted"
+      ? "Intake marked as submitted."
+      : toastCode === "reopened"
+      ? "Intake reopened (back to Draft)."
+      : toastCode?.startsWith("Action failed")
+      ? "Action failed."
       : null;
 
-  // Map to FlashToastOnLoad variant union
   const toastVariant: "success" | "error" | "info" | undefined =
-    toastMessage?.includes("failed")
+    toastMessage === "Action failed."
       ? "error"
       : toastMessage
       ? "success"
       : undefined;
 
-  // Build where safely
+  // Filter
   let where: Prisma.ClientWhereInput = {};
-  if (q.trim()) {
+  if (q.trim().length > 0) {
     where = {
       OR: [
         { name: { contains: q, mode: "insensitive" } },
@@ -80,11 +96,12 @@ export default async function ClientsPage({ searchParams }: PageProps) {
         variant={toastVariant}
       />
 
-      {/* New Client */}
+      {/* New Client: posts to API route */}
       <section className="rounded-2xl border p-6">
         <h2 className="text-lg font-medium">New Client</h2>
         <form
-          action={createClientAction}
+          action="/api/clients"
+          method="post"
           className="mt-4 grid gap-4 md:grid-cols-2"
         >
           <div className="space-y-2">
@@ -147,7 +164,6 @@ export default async function ClientsPage({ searchParams }: PageProps) {
         <div className="flex items-end justify-between">
           <h2 className="text-lg font-medium">All Clients</h2>
 
-          {/* Search bar */}
           <form method="get" className="flex gap-2">
             <input
               name="q"
