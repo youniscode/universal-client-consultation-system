@@ -48,8 +48,13 @@ async function normalizeSearchParams(input: unknown): Promise<SearchParams> {
 }
 
 // Don’t over-constrain props. Accept unknown and normalize.
-export default async function ClientsPage(props: { searchParams?: unknown }) {
-  const sp = await normalizeSearchParams(props?.searchParams);
+export default async function ClientsPage({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  // Works whether it's a Promise or already a plain object
+  const sp = (await searchParams) ?? {};
   const q = Array.isArray(sp.q) ? sp.q[0] : sp.q ?? "";
 
   // Map ?toast=... to a message for the floating toast
