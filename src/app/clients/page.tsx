@@ -1,3 +1,4 @@
+// src/app/clients/page.tsx
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import Button from "@/components/ui/button";
@@ -9,6 +10,7 @@ import { createClientAction } from "@/actions/clients";
 
 export const dynamic = "force-dynamic";
 
+// Tiny pill chip
 function Chip({
   children,
   className = "",
@@ -25,19 +27,32 @@ function Chip({
   );
 }
 
+// Strongly-typed payload so TS knows `_count` exists.
 type ClientWithCounts = Prisma.ClientGetPayload<{
   include: { _count: { select: { projects: true } } };
 }>;
 
-// Keep the prop shape loose and normalize inside (avoids Next’s PageProps mismatch).
-type PageProps = {
-  searchParams?: Record<string, string | string[] | undefined>;
-};
+// What we expect inside searchParams
+type SearchParams = Record<string, string | string[] | undefined>;
 
-export default async function ClientsPage({ searchParams }: PageProps) {
-  const sp = searchParams ?? {};
+/** Normalize Next’s searchParams (may be a Promise on some hosts). */
+async function normalizeSearchParams(input: unknown): Promise<SearchParams> {
+  if (input instanceof Promise) {
+    const resolved = await input;
+    return (resolved ?? {}) as SearchParams;
+  }
+  if (typeof input === "object" && input !== null) {
+    return input as SearchParams;
+  }
+  return {};
+}
+
+// Don’t over-constrain props. Accept unknown and normalize.
+export default async function ClientsPage(props: { searchParams?: unknown }) {
+  const sp = await normalizeSearchParams(props?.searchParams);
   const q = Array.isArray(sp.q) ? sp.q[0] : sp.q ?? "";
 
+  // Map ?toast=... to a message for the floating toast
   const toastCode = Array.isArray(sp.toast) ? sp.toast[0] : sp.toast ?? null;
   const toastMessage =
     toastCode === "client+created" || toastCode === "created"
@@ -50,12 +65,22 @@ export default async function ClientsPage({ searchParams }: PageProps) {
       ? "Intake marked as submitted."
       : toastCode === "reopened"
       ? "Intake reopened (back to Draft)."
-      : toastCode?.startsWith("action") // for “action failed”
-      ? toastCode.replace(/_/g, " ")
+      : typeof toastCode === "string" &&
+        toastCode.toLowerCase().startsWith("action failed")
+      ? "Action failed."
       : null;
 
+  // Pick a safe variant for our toast component
+  const toastVariant: "info" | "error" | "success" | undefined =
+    toastMessage === "Action failed."
+      ? "error"
+      : toastMessage
+      ? "success"
+      : undefined;
+
+  // Build a Prisma-safe `where`
   let where: Prisma.ClientWhereInput = {};
-  if (q.trim()) {
+  if ((q ?? "").toString().trim().length > 0) {
     where = {
       OR: [
         { name: { contains: q, mode: "insensitive" } },
@@ -72,13 +97,10 @@ export default async function ClientsPage({ searchParams }: PageProps) {
 
   return (
     <main className="p-8 space-y-8">
-      <FlashToastOnLoad
-        message={toastMessage}
-        variant={
-          toastMessage?.toLowerCase().includes("failed") ? "error" : "success"
-        }
-      />
+      {/* Floating toast on load (if any) */}
+      <FlashToastOnLoad message={toastMessage} variant={toastVariant} />
 
+      {/* New Client (Server Action) */}
       <section className="rounded-2xl border p-6">
         <h2 className="text-lg font-medium">New Client</h2>
         <form
@@ -140,10 +162,12 @@ export default async function ClientsPage({ searchParams }: PageProps) {
         </form>
       </section>
 
+      {/* All Clients */}
       <section className="rounded-2xl border p-6 space-y-4">
         <div className="flex items-end justify-between">
           <h2 className="text-lg font-medium">All Clients</h2>
 
+          {/* Search bar */}
           <form method="get" className="flex gap-2">
             <input
               name="q"
@@ -184,14 +208,19 @@ export default async function ClientsPage({ searchParams }: PageProps) {
                 <div>
                   <div className="font-medium">{c.name}</div>
                   <div className="mt-1 flex flex-wrap gap-1.5 text-xs">
+                    {/* Type */}
                     <Chip className="border border-ink-200 bg-ink-50 text-ink-800">
                       {c.clientType}
                     </Chip>
+
+                    {/* Industry */}
                     {c.industry ? (
                       <Chip className="border border-ink-200 bg-ink-50 text-ink-700">
                         {c.industry}
                       </Chip>
                     ) : null}
+
+                    {/* Project count */}
                     <Chip className="border border-brand-200 bg-brand-50 text-brand-700">
                       {c._count.projects} project
                       {c._count.projects === 1 ? "" : "s"}
