@@ -54,7 +54,7 @@ export default async function ClientsPage({
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
   // Works whether it's a Promise or already a plain object
-  const sp = (await searchParams) ?? {};
+  const sp = await normalizeSearchParams(searchParams);
   const q = Array.isArray(sp.q) ? sp.q[0] : sp.q ?? "";
 
   // Map ?toast=... to a message for the floating toast
@@ -76,12 +76,15 @@ export default async function ClientsPage({
       : null;
 
   // Pick a safe variant for our toast component
-  const toastVariant: "info" | "error" | "success" | undefined =
-    toastMessage === "Action failed."
-      ? "error"
-      : toastMessage
-      ? "success"
-      : undefined;
+  let toastVariant: "success" | "error" | "info" | undefined;
+
+  if (toastMessage?.includes("created") || toastMessage?.includes("deleted")) {
+    toastVariant = "success";
+  } else if (toastMessage?.includes("failed")) {
+    toastVariant = "error";
+  } else {
+    toastVariant = "info";
+  }
 
   // Build a Prisma-safe `where`
   let where: Prisma.ClientWhereInput = {};
