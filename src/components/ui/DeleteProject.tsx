@@ -3,28 +3,38 @@
 import Button from "@/components/ui/button";
 import { deleteProjectAndRedirect } from "@/actions/projects";
 
+type Props = {
+  projectId: string;
+  clientId: string;
+  className?: string;
+  name?: string;
+};
+
+/** Client-side wrapper so we can confirm() before calling the server action. */
 export default function DeleteProject({
   projectId,
   clientId,
-  name,
-}: {
-  projectId: string;
-  clientId: string;
-  name: string;
-}) {
+  className = "",
+  name = "",
+}: Props) {
   return (
     <form
-      action={deleteProjectAndRedirect}
+      action={deleteProjectAndRedirect.bind(null, projectId, clientId)}
       onSubmit={(e) => {
-        if (!confirm(`Delete project “${name}”? This cannot be undone.`)) {
+        if (
+          !confirm(
+            `Delete this project${
+              name ? ` “${name}”` : ""
+            } and all of its related data? This cannot be undone.`
+          )
+        ) {
           e.preventDefault();
         }
       }}
+      className={className}
     >
-      <input type="hidden" name="projectId" value={projectId} />
-      <input type="hidden" name="clientId" value={clientId} />
       <Button type="submit" variant="destructive" size="sm">
-        Delete project
+        Delete
       </Button>
     </form>
   );

@@ -10,10 +10,8 @@ import DeleteProject from "@/components/ui/DeleteProject";
 import {
   createProject,
   updateProject,
-  // redirecting versions to drive toasts:
   submitProjectAndRedirect,
   reopenProjectAndRedirect,
-  // you can also swap DeleteProject to use deleteProjectAndRedirect later
 } from "@/actions/projects";
 import {
   ProjectType,
@@ -78,9 +76,7 @@ export default async function ClientDetailPage({
   const enriched = await Promise.all(
     projects.map(async (p) => {
       const [answeredCount, lastAnswer] = await Promise.all([
-        prisma.answer.count({
-          where: { projectId: p.id, NOT: { value: "" } },
-        }),
+        prisma.answer.count({ where: { projectId: p.id, NOT: { value: "" } } }),
         prisma.answer.findFirst({
           where: { projectId: p.id },
           orderBy: { updatedAt: "desc" },
@@ -242,7 +238,6 @@ export default async function ClientDetailPage({
                     <div className="mt-3 flex flex-wrap gap-3">
                       <Link
                         href={`/projects/${p.id}/intake`}
-                        prefetch
                         className="inline-flex items-center rounded-md border px-3 py-2 text-sm hover:bg-ink-50"
                       >
                         {p.status === ProjectStatus.SUBMITTED
@@ -252,7 +247,6 @@ export default async function ClientDetailPage({
 
                       <Link
                         href={`/projects/${p.id}/brief`}
-                        prefetch
                         className="inline-flex items-center rounded-md border px-3 py-2 text-sm hover:bg-ink-50"
                       >
                         Generate brief
@@ -284,10 +278,7 @@ export default async function ClientDetailPage({
                         </form>
                       )}
 
-                      {/* Delete (DRAFT only) — currently uses your component.
-                          If you want a toast on delete too, switch this to a form
-                          that posts to deleteProjectAndRedirect (and optionally
-                          add a tiny client confirm). */}
+                      {/* Delete (DRAFT only) — uses your component */}
                       {p.status === ProjectStatus.DRAFT && (
                         <DeleteProject
                           projectId={p.id}
@@ -390,10 +381,22 @@ function FieldSelect({
   id: string;
   name: string;
   label: string;
-  options: string[];
-  defaultValue?: string;
+  options: Array<string | number>;
+  defaultValue?: string | number;
   allowEmpty?: boolean;
 }) {
+  // Convert defaultValue to something <select> accepts:
+  // - if undefined/null and allowEmpty, use empty string
+  // - otherwise, stringify numbers/enums safely
+  const dv: string | number | readonly string[] | undefined =
+    defaultValue == null
+      ? allowEmpty
+        ? ""
+        : undefined
+      : typeof defaultValue === "number"
+      ? String(defaultValue)
+      : defaultValue;
+
   return (
     <div className="space-y-2">
       <label htmlFor={id} className="block text-sm font-medium">
@@ -403,14 +406,17 @@ function FieldSelect({
         id={id}
         name={name}
         className="w-full rounded-md border px-3 py-2"
-        defaultValue={defaultValue}
+        defaultValue={dv}
       >
         {allowEmpty && <option value="">(unspecified)</option>}
-        {options.map((opt) => (
-          <option key={opt} value={opt}>
-            {opt}
-          </option>
-        ))}
+        {options.map((opt) => {
+          const v = typeof opt === "number" ? String(opt) : String(opt);
+          return (
+            <option key={v} value={v}>
+              {v}
+            </option>
+          );
+        })}
       </select>
     </div>
   );
