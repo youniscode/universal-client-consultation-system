@@ -1,35 +1,34 @@
+// src/components/ui/DeleteProject.tsx
 "use client";
 
+import * as React from "react";
 import Button from "@/components/ui/button";
-import { deleteProjectAction } from "@/actions/projects";
 
 type Props = {
   projectId: string;
   clientId: string;
   name?: string;
   className?: string;
+  /** Server Action passed from the server page (receives FormData) */
+  action: (formData: FormData) => Promise<void>;
 };
 
-/**
- * Client-side wrapper so we can show confirm() before calling the server action.
- * Posts hidden fields (projectId, clientId) to deleteProjectAction which
- * redirects back to /clients/[id] with a toast (success/fail).
- */
 export default function DeleteProject({
   projectId,
   clientId,
-  name = "",
+  name,
   className = "",
+  action,
 }: Props) {
   return (
     <form
-      action={deleteProjectAction}
+      action={action}
       onSubmit={(e) => {
         if (
           !confirm(
-            `Delete this project${
-              name ? ` “${name}”` : ""
-            } and all of its related data? This cannot be undone.`
+            `Delete the project "${
+              name ?? "Untitled"
+            }" and all its related data? This cannot be undone.`
           )
         ) {
           e.preventDefault();
@@ -39,7 +38,7 @@ export default function DeleteProject({
     >
       <input type="hidden" name="projectId" value={projectId} />
       <input type="hidden" name="clientId" value={clientId} />
-      <Button type="submit" variant="destructive" size="sm">
+      <Button type="submit" size="sm" variant="destructive">
         Delete
       </Button>
     </form>

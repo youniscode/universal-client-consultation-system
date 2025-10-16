@@ -12,6 +12,7 @@ import {
   updateProject,
   submitProjectAndRedirect,
   reopenProjectAndRedirect,
+  deleteProjectAndRedirect,
 } from "@/actions/projects";
 import {
   ProjectType,
@@ -278,12 +279,16 @@ export default async function ClientDetailPage({
                         </form>
                       )}
 
-                      {/* Delete (DRAFT only) — uses your component */}
+                      {/* ✅ Fixed DeleteProject with required action */}
                       {p.status === ProjectStatus.DRAFT && (
                         <DeleteProject
                           projectId={p.id}
                           clientId={client.id}
                           name={p.name}
+                          action={async () => {
+                            "use server";
+                            await deleteProjectAndRedirect(p.id, client.id);
+                          }}
                         />
                       )}
                     </div>
@@ -385,9 +390,6 @@ function FieldSelect({
   defaultValue?: string | number;
   allowEmpty?: boolean;
 }) {
-  // Convert defaultValue to something <select> accepts:
-  // - if undefined/null and allowEmpty, use empty string
-  // - otherwise, stringify numbers/enums safely
   const dv: string | number | readonly string[] | undefined =
     defaultValue == null
       ? allowEmpty
