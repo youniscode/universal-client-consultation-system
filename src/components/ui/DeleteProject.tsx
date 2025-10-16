@@ -1,25 +1,29 @@
 "use client";
 
 import Button from "@/components/ui/button";
-import { deleteProjectAndRedirect } from "@/actions/projects";
+import { deleteProjectAction } from "@/actions/projects";
 
 type Props = {
   projectId: string;
   clientId: string;
-  className?: string;
   name?: string;
+  className?: string;
 };
 
-/** Client-side wrapper so we can confirm() before calling the server action. */
+/**
+ * Client-side wrapper so we can show confirm() before calling the server action.
+ * Posts hidden fields (projectId, clientId) to deleteProjectAction which
+ * redirects back to /clients/[id] with a toast (success/fail).
+ */
 export default function DeleteProject({
   projectId,
   clientId,
-  className = "",
   name = "",
+  className = "",
 }: Props) {
   return (
     <form
-      action={deleteProjectAndRedirect.bind(null, projectId, clientId)}
+      action={deleteProjectAction}
       onSubmit={(e) => {
         if (
           !confirm(
@@ -33,6 +37,8 @@ export default function DeleteProject({
       }}
       className={className}
     >
+      <input type="hidden" name="projectId" value={projectId} />
+      <input type="hidden" name="clientId" value={clientId} />
       <Button type="submit" variant="destructive" size="sm">
         Delete
       </Button>

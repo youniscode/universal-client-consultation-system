@@ -176,3 +176,10 @@ export async function deleteProjectAndRedirect(projectId: string, clientId: stri
     revalidatePath(`/clients/${clientId}`);
     return redirect(`/clients/${clientId}?toast=deleted`);
 }
+
+// Form wrapper so Client Components can post hidden inputs
+export async function deleteProjectAction(formData: FormData) {
+    const projectId = String(formData.get("projectId") ?? "");
+    const clientId = String(formData.get("clientId") ?? "");
+    return deleteProjectAndRedirect(projectId, clientId);
+}
