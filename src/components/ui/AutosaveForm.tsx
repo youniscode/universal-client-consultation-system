@@ -12,25 +12,23 @@ type Props = {
   children: React.ReactNode;
   /** Optional: debounce delay in ms (default 500) */
   debounceMs?: number;
-  /** Optional: api endpoint (default /api/answers) */
+  /** Optional: api endpoint (default /api/answers/bulk) */
   endpoint?: string;
 };
 
 /**
- * Wraps form fields and autosaves to /api/answers on change, with a small
+ * Wraps form fields and autosaves to /api/answers/bulk on change, with a small
  * floating status badge (“Saving… / Saved ✓ / Error”) in the top-right.
  *
- * How it works:
- * - On any input/select/textarea change, we debounce and POST a FormData payload:
- *   - projectId
- *   - Each field serialized as q_<questionId>=<value>
- * - The status badge animates between saving/saved/error states.
+ * We POST FormData:
+ *  - projectId
+ *  - Each field serialized as q_<questionId>=<value>
  */
 export default function AutosaveForm({
   projectId,
   children,
   debounceMs = 500,
-  endpoint = "/api/answers",
+  endpoint = "/api/answers/bulk",
 }: Props) {
   const formRef = React.useRef<HTMLFormElement>(null);
   const timerRef = React.useRef<number | null>(null);
@@ -44,15 +42,13 @@ export default function AutosaveForm({
     const fd = new FormData();
     fd.set("projectId", projectId);
 
-    // We accept inputs, textareas and selects.
     const fields = form.querySelectorAll<
       HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
     >("input[name], textarea[name], select[name]");
 
     fields.forEach((el) => {
       const name = el.name;
-      // We expect names shaped like q_<questionId>, but we’ll send anything present.
-      // For checkboxes/radios, only include checked ones.
+
       if ((el as HTMLInputElement).type === "checkbox") {
         const cb = el as HTMLInputElement;
         if (cb.checked) fd.append(name, cb.value || "on");
@@ -68,44 +64,34 @@ export default function AutosaveForm({
 
     try {
       setStatus("saving");
-      const res = await fetch(endpoint, {
-        method: "POST",
-        body: fd,
-      });
+      const res = await fetch(endpoint, { method: "POST", body: fd });
 
       if (!res.ok) {
         setStatus("error");
-        // Surface more detail in console for debugging
         try {
           const j = await res.json();
-          // eslint-disable-next-line no-console
-          console.error("Autosave error", res.status, j);
+          console.error("Autosave error", res.status, j); // eslint-disable-line no-console
         } catch {
-          // eslint-disable-next-line no-console
-          console.error("Autosave error", res.status);
+          console.error("Autosave error", res.status); // eslint-disable-line no-console
         }
         return;
       }
 
       setStatus("saved");
-      // Gently return to idle so the badge fades away
       window.setTimeout(() => setStatus("idle"), 1200);
     } catch (err) {
       setStatus("error");
-      // eslint-disable-next-line no-console
-      console.error("Autosave network error", err);
+      console.error("Autosave network error", err); // eslint-disable-line no-console
     }
   }, [endpoint, projectId]);
 
   // Debounced onChange handler
   const onAnyChange = React.useCallback(() => {
     if (timerRef.current) window.clearTimeout(timerRef.current);
-    // Show “saving…” quickly to reassure the user
     setStatus((s) => (s === "saved" ? "saved" : "saving"));
     timerRef.current = window.setTimeout(save, debounceMs) as unknown as number;
   }, [debounceMs, save]);
 
-  // Cleanup on unmount
   React.useEffect(() => {
     return () => {
       if (timerRef.current) window.clearTimeout(timerRef.current);
@@ -115,8 +101,9 @@ export default function AutosaveForm({
   return (
     <form
       ref={formRef}
-      // Use capture so we catch changes from any nested component
       onChange={onAnyChange}
+      onSubmit={(e) => e.preventDefault()}
+      noValidate
       className="relative"
     >
       {/* Floating badge (top-right). aria-live for screen readers */}
@@ -134,7 +121,6 @@ export default function AutosaveForm({
 
 /** Small, unobtrusive status badge */
 function StatusBadge({ status }: { status: Status }) {
-  // Keep it invisible when idle
   if (status === "idle") {
     return (
       <span className="opacity-0 transition-opacity duration-300 select-none">
@@ -142,7 +128,6 @@ function StatusBadge({ status }: { status: Status }) {
       </span>
     );
   }
-
   if (status === "saving") {
     return (
       <span className="pointer-events-auto inline-flex items-center gap-1 rounded-md bg-ink-900 px-2 py-0.5 text-[11px] font-medium text-white shadow">
@@ -151,7 +136,6 @@ function StatusBadge({ status }: { status: Status }) {
       </span>
     );
   }
-
   if (status === "saved") {
     return (
       <span className="pointer-events-auto inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2 py-0.5 text-[11px] font-medium text-white shadow transition-opacity">
@@ -160,8 +144,6 @@ function StatusBadge({ status }: { status: Status }) {
       </span>
     );
   }
-
-  // error
   return (
     <span className="pointer-events-auto inline-flex items-center gap-1 rounded-md bg-red-600 px-2 py-0.5 text-[11px] font-medium text-white shadow">
       <Exclamation className="h-3 w-3" />

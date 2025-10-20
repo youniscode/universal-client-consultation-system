@@ -93,11 +93,10 @@ export default function Toaster() {
       };
       setToasts((prev) => [...prev, item]);
 
-      // schedule auto-dismiss
       const t = window.setTimeout(() => {
         setToasts((prev) => prev.filter((x) => x.id !== id));
       }, item.duration);
-      // Clean up if user closes early
+
       return () => window.clearTimeout(t);
     }
 
@@ -197,7 +196,7 @@ export function toast(detail: Omit<ToastItem, "id">) {
   window.dispatchEvent(new CustomEvent("toast", { detail }));
 }
 
-/** Show a toast once on mount if `message` provided (server → client bridge) */
+/** Show a toast once on mount if `message` provided (server → client bridge). */
 export function FlashToastOnLoad({
   message,
   variant = "success",
@@ -205,9 +204,28 @@ export function FlashToastOnLoad({
   message?: string | null;
   variant?: ToastItem["variant"];
 }) {
+  const shownFor = React.useRef<string | null>(null);
+
   React.useEffect(() => {
     if (!message) return;
+
+    // prevent duplicate toasts (StrictMode double-invoke, remounts, back/forward)
+    if (shownFor.current === message) return;
+    shownFor.current = message;
+
     toast({ title: message, variant, duration: 3200 });
+
+    // after showing once, strip ?toast= from the URL so it can't fire again
+    try {
+      const url = new URL(window.location.href);
+      if (url.searchParams.has("toast")) {
+        url.searchParams.delete("toast");
+        window.history.replaceState({}, "", url);
+      }
+    } catch {
+      /* no-op */
+    }
   }, [message, variant]);
+
   return null;
 }

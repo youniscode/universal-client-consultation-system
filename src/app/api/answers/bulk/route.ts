@@ -3,35 +3,35 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { ProjectStatus } from "@prisma/client";
 
-export const dynamic = "force-dynamic";
-
 export async function POST(req: Request) {
     try {
         const formData = await req.formData();
         const projectId = String(formData.get("projectId") ?? "").trim();
 
         if (!projectId) {
-            return NextResponse.json({ error: "Missing projectId" }, { status: 400 });
+            return NextResponse.json({ ok: false, error: "Missing projectId" }, { status: 400 });
         }
 
-        // Guard: project must exist & not be submitted
+        // Gate: block writes if submitted
         const project = await prisma.project.findUnique({
             where: { id: projectId },
             select: { status: true },
         });
+
         if (!project) {
-            return NextResponse.json({ error: "Project not found" }, { status: 404 });
+            return NextResponse.json({ ok: false, error: "Project not found" }, { status: 404 });
         }
+
         if (project.status === ProjectStatus.SUBMITTED) {
             return NextResponse.json(
-                { error: "Project intake is submitted (read-only)" },
+                { ok: false, error: "Project intake is submitted (read-only)" },
                 { status: 403 }
             );
         }
 
-        // q_<questionId> = <value>
-        let upsertCount = 0;
+        let upserts = 0;
 
+        // Expect keys like q_<questionId>
         for (const [key, raw] of formData.entries()) {
             if (key === "projectId") continue;
             if (!key.startsWith("q_")) continue;
@@ -42,7 +42,7 @@ export async function POST(req: Request) {
             if (typeof raw !== "string") continue;
             const value = raw.trim();
 
-            // (Optional) verify question exists
+            // Ensure question exists (optional but safe)
             const exists = await prisma.question.findUnique({
                 where: { id: questionId },
                 select: { id: true },
@@ -55,12 +55,12 @@ export async function POST(req: Request) {
                 update: { value },
             });
 
-            upsertCount++;
+            upserts++;
         }
 
-        return NextResponse.json({ ok: true, upserts: upsertCount });
+        return NextResponse.json({ ok: true, upserts });
     } catch (e) {
-        console.error("[api/answers/bulk] POST error", e);
-        return NextResponse.json({ error: "Server error" }, { status: 500 });
+        console.error("[answers.bulk] server error", e);
+        return NextResponse.json({ ok: false, error: "Server error" }, { status: 500 });
     }
 }
