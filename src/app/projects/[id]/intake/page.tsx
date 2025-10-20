@@ -8,12 +8,14 @@ import {
   Phase,
   QuestionType,
   type Question,
-  type Answer,
+  ProjectStatus,
 } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
 
-// Helper
+// --------------------------------------------------
+// Helpers
+// --------------------------------------------------
 function formatPhase(p: Phase): string {
   switch (p) {
     case "DISCOVERY":
@@ -35,6 +37,137 @@ function formatPhase(p: Phase): string {
   }
 }
 
+// Render one control by type.
+// For CHECKBOX we treat Answer.value as a CSV of selected labels.
+function renderControl(
+  q: Question,
+  value: string | null,
+  readonly: boolean
+): React.ReactNode {
+  const v = value ?? "";
+
+  const csvToSet = (s: string) =>
+    new Set(
+      s
+        .split(",")
+        .map((x) => x.trim())
+        .filter(Boolean)
+    );
+
+  switch (q.type) {
+    case "TEXT":
+      return (
+        <input
+          id={`q_${q.id}`}
+          name={`q_${q.id}`}
+          className="w-full rounded-md border px-3 py-2"
+          defaultValue={v}
+          disabled={readonly}
+          placeholder={readonly ? undefined : "Type your answer"}
+        />
+      );
+
+    case "TEXTAREA":
+      return (
+        <textarea
+          id={`q_${q.id}`}
+          name={`q_${q.id}`}
+          className="w-full rounded-md border px-3 py-2 min-h-[100px]"
+          defaultValue={v}
+          disabled={readonly}
+          placeholder={readonly ? undefined : "Type your answer"}
+        />
+      );
+
+    case "DROPDOWN": {
+      const opts: string[] = Array.isArray(q.options)
+        ? (q.options as string[])
+        : [];
+      return (
+        <select
+          id={`q_${q.id}`}
+          name={`q_${q.id}`}
+          className="w-full rounded-md border px-3 py-2"
+          defaultValue={v}
+          disabled={readonly || opts.length === 0}
+        >
+          {readonly ? (
+            <option value="">—</option>
+          ) : (
+            <option value="">— Select —</option>
+          )}
+          {opts.length > 0
+            ? opts.map((opt) => (
+                <option key={opt} value={opt}>
+                  {opt}
+                </option>
+              ))
+            : null}
+        </select>
+      );
+    }
+
+    case "CHECKBOX": {
+      const opts: string[] = Array.isArray(q.options)
+        ? (q.options as string[])
+        : [];
+      const selected = csvToSet(v);
+
+      // If no options were seeded, gracefully fall back to a single text input
+      if (opts.length === 0) {
+        return (
+          <input
+            id={`q_${q.id}`}
+            name={`q_${q.id}`}
+            className="w-full rounded-md border px-3 py-2"
+            defaultValue={v}
+            disabled={readonly}
+            placeholder={readonly ? undefined : "Type your answer"}
+          />
+        );
+      }
+
+      return (
+        <fieldset className="space-y-2">
+          {opts.map((opt) => {
+            const cid = `q_${q.id}_${opt}`;
+            return (
+              <label
+                key={opt}
+                htmlFor={cid}
+                className="flex items-center gap-2 text-sm"
+              >
+                <input
+                  id={cid}
+                  type="checkbox"
+                  name={`q_${q.id}`}
+                  value={opt}
+                  defaultChecked={selected.has(opt)}
+                  disabled={readonly}
+                  className="h-4 w-4 rounded border"
+                />
+                <span>{opt}</span>
+              </label>
+            );
+          })}
+        </fieldset>
+      );
+    }
+
+    default:
+      // Future-proof fallback
+      return (
+        <input
+          id={`q_${q.id}`}
+          name={`q_${q.id}`}
+          className="w-full rounded-md border px-3 py-2"
+          defaultValue={v}
+          disabled={readonly}
+        />
+      );
+  }
+}
+
 export default async function ProjectIntakePage({
   params,
 }: {
@@ -49,13 +182,13 @@ export default async function ProjectIntakePage({
   });
   if (!project) return notFound();
 
-  // Lock if already submitted (we use ACTIVE = submitted)
-  const isLocked = project.status === "ACTIVE";
+  // Lock when submitted
+  const isLocked = project.status === ProjectStatus.SUBMITTED;
 
   // Active questionnaire
   const questionnaire = await prisma.questionnaire.findFirst({
     where: { isActive: true },
-    include: { questions: { orderBy: { phase: "asc" } } },
+    include: { questions: { orderBy: { order: "asc" } } },
   });
   if (!questionnaire) {
     return (
@@ -119,7 +252,7 @@ export default async function ProjectIntakePage({
         <Progress value={pct} label={`${answered}/${total} answered`} />
 
         {isLocked ? (
-          // READ-ONLY
+          // READ-ONLY (reuses the same renderer with disabled=true)
           <fieldset disabled className="space-y-8">
             {Object.values(Phase).map((ph) => {
               const qs = grouped[ph] || [];
@@ -133,58 +266,13 @@ export default async function ProjectIntakePage({
 
                   <div className="space-y-6">
                     {qs.map((q, idx) => {
-                      const name = `q_${q.id}`;
                       const saved = ansMap.get(q.id) ?? "";
-
                       return (
                         <div key={q.id} className="space-y-2">
                           <label className="block text-sm font-medium">
                             {`${idx + 1}. ${q.questionText}`}
                           </label>
-
-                          {q.type === "TEXT" && (
-                            <input
-                              id={name}
-                              name={name}
-                              className="w-full rounded-md border px-3 py-2"
-                              defaultValue={
-                                typeof saved === "string" ? saved : ""
-                              }
-                              readOnly
-                            />
-                          )}
-
-                          {q.type === "TEXTAREA" && (
-                            <textarea
-                              id={name}
-                              name={name}
-                              className="w-full rounded-md border px-3 py-2 min-h-[100px]"
-                              defaultValue={
-                                typeof saved === "string" ? saved : ""
-                              }
-                              readOnly
-                            />
-                          )}
-
-                          {q.type === "DROPDOWN" &&
-                            Array.isArray(q.options) && (
-                              <select
-                                id={name}
-                                name={name}
-                                className="w-full rounded-md border px-3 py-2"
-                                defaultValue={
-                                  typeof saved === "string" ? saved : ""
-                                }
-                                disabled
-                              >
-                                <option value="">—</option>
-                                {(q.options as string[]).map((opt) => (
-                                  <option key={opt} value={opt}>
-                                    {opt}
-                                  </option>
-                                ))}
-                              </select>
-                            )}
+                          {renderControl(q, saved, true)}
                         </div>
                       );
                     })}
@@ -210,60 +298,13 @@ export default async function ProjectIntakePage({
 
                   <div className="space-y-6">
                     {qs.map((q, idx) => {
-                      const name = `q_${q.id}`;
                       const saved = ansMap.get(q.id) ?? "";
-
                       return (
                         <div key={q.id} className="space-y-2">
-                          <label
-                            htmlFor={name}
-                            className="block text-sm font-medium"
-                          >
+                          <label className="block text-sm font-medium">
                             {`${idx + 1}. ${q.questionText}`}
                           </label>
-
-                          {q.type === "TEXT" && (
-                            <input
-                              id={name}
-                              name={name}
-                              className="w-full rounded-md border px-3 py-2"
-                              defaultValue={
-                                typeof saved === "string" ? saved : ""
-                              }
-                              placeholder="Type your answer"
-                            />
-                          )}
-
-                          {q.type === "TEXTAREA" && (
-                            <textarea
-                              id={name}
-                              name={name}
-                              className="w-full rounded-md border px-3 py-2 min-h-[100px]"
-                              defaultValue={
-                                typeof saved === "string" ? saved : ""
-                              }
-                              placeholder="Type your answer"
-                            />
-                          )}
-
-                          {q.type === "DROPDOWN" &&
-                            Array.isArray(q.options) && (
-                              <select
-                                id={name}
-                                name={name}
-                                className="w-full rounded-md border px-3 py-2"
-                                defaultValue={
-                                  typeof saved === "string" ? saved : ""
-                                }
-                              >
-                                <option value="">— Select —</option>
-                                {(q.options as string[]).map((opt) => (
-                                  <option key={opt} value={opt}>
-                                    {opt}
-                                  </option>
-                                ))}
-                              </select>
-                            )}
+                          {renderControl(q, saved, false)}
                         </div>
                       );
                     })}

@@ -4,6 +4,9 @@ import { prisma } from "@/lib/db";
 import { ProjectStatus } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";      // ✅ ensure Node runtime on Vercel
+
+
 
 export async function POST(req: Request) {
     try {

@@ -1,3 +1,4 @@
+// src/actions/clients.ts
 "use server";
 
 import { prisma } from "@/lib/db";
@@ -6,35 +7,52 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { Prisma, ClientType } from "@prisma/client";
 
+/* ------------------------------- validation ------------------------------ */
+
 const schema = z.object({
     name: z.string().min(2, "Client name is required."),
-    clientType: z.nativeEnum(ClientType).default("SMALL_BUSINESS"),
-    industry: z.string().transform(v => (v?.trim() ? v.trim() : null)).nullable().optional(),
-    contactName: z.string().transform(v => (v?.trim() ? v.trim() : null)).nullable().optional(),
-    contactEmail: z.string().transform(v => (v?.trim() ? v.trim() : null)).nullable().optional(),
+    // IMPORTANT: default to the enum value, not a string literal
+    clientType: z.nativeEnum(ClientType).default(ClientType.SMALL_BUSINESS),
+    industry: z
+        .string()
+        .optional()
+        .transform((v) => (v && v.trim().length ? v.trim() : null)),
+    contactName: z
+        .string()
+        .optional()
+        .transform((v) => (v && v.trim().length ? v.trim() : null)),
+    contactEmail: z
+        .string()
+        .optional()
+        .transform((v) => (v && v.trim().length ? v.trim() : null)),
 });
 
-// Make sure the owner exists in DB (so FK won’t fail on Render)
-async function ensureOwner(ownerId: string) {
-    const fallbackEmail =
-        process.env.DEFAULT_OWNER_EMAIL ||
-        `${ownerId.toLowerCase()}@example.com`;
+/* --------------------------- owner resolution --------------------------- */
+/**
+ * Instead of requiring DEFAULT_OWNER_ID, we upsert a single owner by email.
+ * If no env is provided, we fall back to "demo@uccs.local".
+ */
+async function getOrCreateOwnerId(): Promise<string> {
+    const ownerEmail =
+        process.env.DEFAULT_OWNER_EMAIL?.trim() || "demo@uccs.local";
+    const ownerName = process.env.DEFAULT_OWNER_NAME?.trim() || "Demo Owner";
 
-    await prisma.user.upsert({
-        where: { id: ownerId },
-        update: { updatedAt: new Date() },
-        create: {
-            id: ownerId,
-            name: ownerId,
-            email: fallbackEmail,
-        },
+    const owner = await prisma.user.upsert({
+        where: { email: ownerEmail },
+        update: { name: ownerName },
+        create: { email: ownerEmail, name: ownerName },
+        select: { id: true },
     });
+
+    return owner.id;
 }
+
+/* --------------------------------- create ------------------------------- */
 
 export async function createClientAction(formData: FormData) {
     const raw = {
         name: String(formData.get("name") ?? ""),
-        clientType: (formData.get("clientType") as string) || "SMALL_BUSINESS",
+        clientType: (formData.get("clientType") as string) || ClientType.SMALL_BUSINESS,
         industry: (formData.get("industry") as string) ?? "",
         contactName: (formData.get("contactName") as string) ?? "",
         contactEmail: (formData.get("contactEmail") as string) ?? "",
@@ -43,19 +61,19 @@ export async function createClientAction(formData: FormData) {
     const parsed = schema.safeParse(raw);
     if (!parsed.success) {
         console.warn("[createClientAction] invalid payload:", parsed.error.flatten());
-        return redirect("/clients?toast=action+failed");
+        redirect("/clients?toast=action+failed");
     }
 
-    const ownerId = process.env.DEFAULT_OWNER_ID?.trim();
-    if (!ownerId) {
-        console.error("[createClientAction] DEFAULT_OWNER_ID is missing.");
-        return redirect("/clients?toast=action+failed");
+    let ownerId: string;
+    try {
+        ownerId = await getOrCreateOwnerId();
+    } catch (e) {
+        console.error("[createClientAction] failed to resolve owner:", e);
+        redirect("/clients?toast=action+failed");
+        return; // for type-safety; redirect already sent
     }
 
     try {
-        // Ensure FK row exists on whatever DB we’re running (Render/local)
-        await ensureOwner(ownerId);
-
         const data: Prisma.ClientUncheckedCreateInput = {
             name: parsed.data.name,
             clientType: parsed.data.clientType,
@@ -68,24 +86,26 @@ export async function createClientAction(formData: FormData) {
         await prisma.client.create({ data });
     } catch (err) {
         console.error("[createClientAction] Prisma create failed:", err);
-        return redirect("/clients?toast=action+failed");
+        redirect("/clients?toast=action+failed");
     }
 
     revalidatePath("/clients");
-    return redirect("/clients?toast=client+created");
+    redirect("/clients?toast=client+created");
 }
+
+/* --------------------------------- delete ------------------------------- */
 
 export async function deleteClientAction(formData: FormData) {
     const id = String(formData.get("clientId") ?? "");
-    if (!id) return redirect("/clients?toast=action+failed");
+    if (!id) redirect("/clients?toast=action+failed");
 
     try {
         await prisma.client.delete({ where: { id } });
     } catch (err) {
         console.error("[deleteClientAction] delete failed:", err);
-        return redirect("/clients?toast=action+failed");
+        redirect("/clients?toast=action+failed");
     }
 
     revalidatePath("/clients");
-    return redirect("/clients?toast=client+deleted");
+    redirect("/clients?toast=client+deleted");
 }
