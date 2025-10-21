@@ -4,6 +4,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { PropsWithChildren, useState } from "react";
+import LogoutButton from "@/components/ui/LogoutButton";
 
 export default function AppShell({ children }: PropsWithChildren) {
   const [imgOk, setImgOk] = useState(true);
@@ -12,6 +13,7 @@ export default function AppShell({ children }: PropsWithChildren) {
     <div className="min-h-dvh bg-ink-50/40 text-ink-900">
       <header className="sticky top-0 z-40 bg-white/80 backdrop-blur border-b border-ink-200">
         <div className="mx-auto max-w-6xl h-14 px-4 flex items-center justify-between">
+          {/* Left side: Logo */}
           <Link
             href="/"
             className="flex items-center gap-2 font-semibold tracking-tight"
@@ -34,10 +36,19 @@ export default function AppShell({ children }: PropsWithChildren) {
             <span>UCCS</span>
           </Link>
 
-          <nav className="flex items-center gap-2">
-            <Link href="/clients" className="btn">
+          {/* Right side: Navigation + Logout */}
+          <nav className="flex items-center gap-3">
+            <Link
+              href="/clients"
+              className="inline-flex items-center rounded-md border px-3 py-1.5 text-sm hover:bg-ink-50 transition"
+            >
               Clients →
             </Link>
+
+            <LogoutButton
+              label="Logout"
+              className="inline-flex items-center rounded-md border px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 transition"
+            />
           </nav>
         </div>
       </header>
