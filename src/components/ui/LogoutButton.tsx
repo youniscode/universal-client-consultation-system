@@ -1,24 +1,18 @@
 // src/components/ui/LogoutButton.tsx
-import { logoutAction } from "@/actions/auth";
+"use client";
 
-export default function LogoutButton({
-  label = "Log out",
-  className = "",
-}: {
-  label?: string;
-  className?: string;
-}) {
+import * as React from "react";
+
+export default function LogoutButton() {
+  async function onClick() {
+    // call the server action via POST to a route handler
+    await fetch("/api/logout", { method: "POST" });
+    window.location.href = "/login?loggedout=1";
+  }
+
   return (
-    <form action={logoutAction}>
-      <button
-        type="submit"
-        className={
-          className ||
-          "inline-flex items-center rounded-md border px-3 py-1.5 text-sm hover:bg-ink-50"
-        }
-      >
-        {label}
-      </button>
-    </form>
+    <button className="btn btn-outline" onClick={onClick}>
+      Logout
+    </button>
   );
 }
