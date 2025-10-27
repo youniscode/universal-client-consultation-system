@@ -6,18 +6,9 @@ import { signInWithPassphrase } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
-// what Next can hand us
 type SearchParams = Record<string, string | string[] | undefined>;
 
-/** grab first string from "string | string[] | undefined" */
-function firstOf(
-  v: string | string[] | undefined,
-  fb: string | null = null
-): string | null {
-  return Array.isArray(v) ? v[0] ?? fb : v ?? fb;
-}
-
-/** narrow "unknown promise-or-not" without using any */
+/** Check if value is a Promise (type guard) */
 function isPromise<T>(v: unknown): v is Promise<T> {
   return (
     typeof v === "object" &&
@@ -26,28 +17,24 @@ function isPromise<T>(v: unknown): v is Promise<T> {
   );
 }
 
-/** Accepts plain or promised searchParams and returns a plain object. */
+/** Read searchParams whether plain or Promise */
 async function readSearchParams(
   input?: SearchParams | Promise<SearchParams>
 ): Promise<SearchParams> {
   if (!input) return {};
-  if (isPromise<SearchParams>(input)) {
-    const resolved = await input;
-    return resolved ?? {};
-  }
-  return input;
+  return isPromise<SearchParams>(input) ? await input : input;
 }
 
-/** Server action: handle login submit */
-export async function doLogin(formData: FormData) {
+/** Server Action (DO NOT export) */
+async function doLogin(formData: FormData) {
   "use server";
   const pass = String(formData.get("pass") ?? "").trim();
   const ok = await signInWithPassphrase(pass);
+
   if (!ok) {
-    // bounce back to login with error flag
-    return redirect("/login?error=invalid");
+    redirect("/login?error=invalid");
   }
-  return redirect("/clients");
+  redirect("/clients");
 }
 
 export default async function LoginPage({
@@ -57,10 +44,13 @@ export default async function LoginPage({
 }) {
   const sp = await readSearchParams(searchParams);
 
-  // flags for one-shot toast (e.g. after logout redirect)
-  const err = firstOf(sp.error);
-  const loggedOut = firstOf(sp.loggedout);
+  // Extract params safely
+  const err = Array.isArray(sp.error) ? sp.error[0] : sp.error ?? null;
+  const loggedOut = Array.isArray(sp.loggedout)
+    ? sp.loggedout[0]
+    : sp.loggedout ?? null;
 
+  // Decide toast message
   const toastMessage =
     err === "invalid"
       ? "Invalid passphrase."
@@ -73,13 +63,10 @@ export default async function LoginPage({
   return (
     <main className="min-h-[70vh] grid place-items-center p-6">
       {/* one-shot toast if redirected with ?loggedout=1 or ?error=... */}
-      <FlashToastOnLoad
-        message={toastMessage ?? undefined}
-        variant={toastVariant}
-      />
+      <FlashToastOnLoad message={toastMessage} variant={toastVariant} />
 
       <div className="w-full max-w-sm rounded-xl border bg-white p-6 shadow-sm">
-        <h1 className="text-xl font-semibold tracking-tight">Sign in</h1>
+        <h1 className="text-xl font-semibold">Sign in</h1>
         <p className="mt-1 text-sm text-ink-600">
           Enter your passphrase to access the console.
         </p>
@@ -91,7 +78,7 @@ export default async function LoginPage({
               name="pass"
               type="password"
               required
-              className="input mt-1 w-full rounded-md border px-3 py-2 text-sm"
+              className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
             />
           </label>
 
