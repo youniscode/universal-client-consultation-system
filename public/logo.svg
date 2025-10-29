@@ -1,0 +1,11 @@
+<!-- public/logo.svg -->
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-label="UCCS logo">
+  <rect width="256" height="256" rx="28" fill="#111827"/>
+  <g fill="white">
+    <circle cx="70" cy="92" r="18"/>
+    <circle cx="186" cy="92" r="18"/>
+    <rect x="48" y="124" width="160" height="18" rx="9"/>
+    <rect x="68" y="156" width="120" height="18" rx="9"/>
+  </g>
+  <text x="50%" y="215" text-anchor="middle" font-family="Inter, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, 'Helvetica Neue', Arial" font-size="28" fill="white" opacity="0.9">UCCS</text>
+</svg>

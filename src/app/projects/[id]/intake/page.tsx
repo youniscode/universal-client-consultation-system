@@ -1,7 +1,7 @@
 // src/app/login/page.tsx
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { signIn } from "@/lib/auth"; // uses your existing auth helper
+import { signIn } from "@/lib/auth-server"; // uses your existing auth helper
 
 export const dynamic = "force-dynamic";
 

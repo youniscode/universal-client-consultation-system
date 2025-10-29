@@ -21,7 +21,7 @@ import {
   Timeline,
   ProjectStatus,
 } from "@prisma/client";
-import { FlashToastOnLoad } from "@/components/ui/toast";
+import FlashToastOnLoad from "@/components/ui/toast";
 
 export const dynamic = "force-dynamic";
 

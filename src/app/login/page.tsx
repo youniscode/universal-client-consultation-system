@@ -1,14 +1,12 @@
 // src/app/login/page.tsx
-import { redirect } from "next/navigation";
 import Link from "next/link";
-import { FlashToastOnLoad } from "@/components/ui/toast";
-import { signInWithPassphrase } from "@/lib/auth";
-
+import { doLogin } from "./actions";
+import FlashToastOnLoad from "@/components/ui/toast";
 export const dynamic = "force-dynamic";
 
 type SearchParams = Record<string, string | string[] | undefined>;
 
-/** Check if value is a Promise (type guard) */
+/** Promise type guard without using `any` */
 function isPromise<T>(v: unknown): v is Promise<T> {
   return (
     typeof v === "object" &&
@@ -17,24 +15,15 @@ function isPromise<T>(v: unknown): v is Promise<T> {
   );
 }
 
-/** Read searchParams whether plain or Promise */
-async function readSearchParams(
+/** Accepts plain or promised searchParams and returns a plain object. */
+async function readSP(
   input?: SearchParams | Promise<SearchParams>
 ): Promise<SearchParams> {
   if (!input) return {};
-  return isPromise<SearchParams>(input) ? await input : input;
-}
-
-/** Server Action (DO NOT export) */
-async function doLogin(formData: FormData) {
-  "use server";
-  const pass = String(formData.get("pass") ?? "").trim();
-  const ok = await signInWithPassphrase(pass);
-
-  if (!ok) {
-    redirect("/login?error=invalid");
+  if (isPromise<SearchParams>(input)) {
+    return await input;
   }
-  redirect("/clients");
+  return input;
 }
 
 export default async function LoginPage({
@@ -42,28 +31,28 @@ export default async function LoginPage({
 }: {
   searchParams?: SearchParams | Promise<SearchParams>;
 }) {
-  const sp = await readSearchParams(searchParams);
+  const sp = await readSP(searchParams);
 
-  // Extract params safely
   const err = Array.isArray(sp.error) ? sp.error[0] : sp.error ?? null;
-  const loggedOut = Array.isArray(sp.loggedout)
-    ? sp.loggedout[0]
-    : sp.loggedout ?? null;
+  const loggedout =
+    (Array.isArray(sp.loggedout) ? sp.loggedout[0] : sp.loggedout) ?? null;
 
-  // Decide toast message
   const toastMessage =
     err === "invalid"
       ? "Invalid passphrase."
-      : loggedOut
+      : loggedout
       ? "Signed out successfully."
       : undefined;
 
-  const toastVariant: "error" | "success" = err ? "error" : "success";
+  const toastVariant = err ? "error" : "success";
 
   return (
     <main className="min-h-[70vh] grid place-items-center p-6">
       {/* one-shot toast if redirected with ?loggedout=1 or ?error=... */}
-      <FlashToastOnLoad message={toastMessage} variant={toastVariant} />
+      <FlashToastOnLoad
+        message={toastMessage ?? undefined}
+        variant={toastVariant as "error" | "success"}
+      />
 
       <div className="w-full max-w-sm rounded-xl border bg-white p-6 shadow-sm">
         <h1 className="text-xl font-semibold">Sign in</h1>

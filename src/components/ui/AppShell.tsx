@@ -3,7 +3,6 @@ import Link from "next/link";
 import Image from "next/image";
 import AuthControls from "./AuthControls";
 
-// NOTE: No "use client" here — this stays a Server Component
 export default function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-dvh bg-ink-50/40 text-ink-900">
@@ -14,7 +13,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             className="flex items-center gap-2 font-semibold tracking-tight"
           >
             <Image
-              src="/logo.svg" // keep a file at public/logo.svg (optional)
+              src="/logo.svg"
               alt="UCCS"
               width={20}
               height={20}
@@ -23,12 +22,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             />
             <span>UCCS</span>
           </Link>
-
-          {/* Server component that can read cookies via next/headers */}
           <AuthControls />
         </div>
       </header>
-
       <main className="mx-auto max-w-6xl px-4 py-8">{children}</main>
     </div>
   );

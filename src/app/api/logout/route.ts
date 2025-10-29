@@ -1,6 +1,6 @@
 // src/app/api/logout/route.ts
 import { NextResponse } from "next/server";
-import { signOut } from "@/lib/auth";
+import { signOut } from "@/lib/auth-server";
 
 export async function POST() {
     await signOut();

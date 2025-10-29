@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 import Button from "@/components/ui/button";
 import DeleteClient from "@/components/ui/DeleteClient";
 import EmptyState from "@/components/ui/empty-state";
-import { FlashToastOnLoad } from "@/components/ui/toast";
+import FlashToastOnLoad from "@/components/ui/toast";
 import type { Prisma } from "@prisma/client";
 import { createClientAction } from "@/actions/clients";
 
